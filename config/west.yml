@@ -5,7 +5,42 @@ manifest:
   projects:
     - name: zmk
       remote: zmkfirmware
-      revision: v0.3
-      import: app/west.yml
+      revision: v0.3.0
+      import:
+        file: app/west.yml
+        # Bo bot cac module khong can cho build Sofle nRF52840:
+        # segger (~300MB, J-Link debug), trusted-firmware-a (~200MB, ARM32-A),
+        # hal cac hang khac, cac lib khong dung. Giu: nordic, lvgl (OLED),
+        # tinycrypt (BLE), picolibc (libc), nanopb, zmk-studio-messages...
+        name-blocklist:
+          - acpica
+          - canopennode
+          - cmsis-dsp
+          - cmsis-nn
+          - hal_ambiq
+          - hal_atmel
+          - hal_espressif
+          - hal_ethos_u
+          - hal_gigadevice
+          - hal_intel
+          - hal_nuvoton
+          - hal_quicklogic
+          - hal_renesas
+          - hal_rpi_pico
+          - hal_stm32
+          - hal_telink
+          - hal_wurthelektronik
+          - libmetal
+          - liblc3
+          - littlefs
+          - mbedtls
+          - mipi-sys-t
+          - nrf_hw_models
+          - open-amp
+          - percepio
+          - segger
+          - trusted-firmware-a
+          - uoscore-uedhoc
+          - zcbor
   self:
     path: config
