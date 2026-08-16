@@ -69,17 +69,19 @@ build () {
 
 case "$TARGET" in
   left)
-    build sofle_left -S:studio-rpc-usb-uart -DSHIELD=sofle_left -DCONFIG_ZMK_STUDIO=y
+    build sofle_left -S:studio-rpc-usb-uart -DSHIELD=sofle_left -DCONFIG_ZMK_STUDIO=y \
+      "-DZMK_EXTRA_MODULES=$ZMK_CONFIG_DIR"
     ;;
   right)
-    build sofle_right -DSHIELD=sofle_right
+    build sofle_right -DSHIELD=sofle_right "-DZMK_EXTRA_MODULES=$ZMK_CONFIG_DIR"
     ;;
   reset)
     build settings_reset -DSHIELD=settings_reset
     ;;
   all|*)
-    build sofle_left -S:studio-rpc-usb-uart -DSHIELD=sofle_left -DCONFIG_ZMK_STUDIO=y
-    build sofle_right -DSHIELD=sofle_right
+    build sofle_left -S:studio-rpc-usb-uart -DSHIELD=sofle_left -DCONFIG_ZMK_STUDIO=y \
+      "-DZMK_EXTRA_MODULES=$ZMK_CONFIG_DIR"
+    build sofle_right -DSHIELD=sofle_right "-DZMK_EXTRA_MODULES=$ZMK_CONFIG_DIR"
     build settings_reset -DSHIELD=settings_reset
     ;;
 esac

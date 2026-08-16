@@ -5,11 +5,12 @@ build/
 .west/
 
 # Source ZMK/Zephyr keo ve boi west update (KHONG commit - ~2.4GB)
-zephyr/
-zmk/
-modules/
-boot/
-tools/
+# Dấu / đứng đầu = chỉ match folder ở root repo (không đụng config/zephyr/)
+/zephyr/
+/zmk/
+/modules/
+/boot/
+/tools/
 args/
 
 # Python

@@ -1,0 +1,3 @@
+name: sofle_custom_screens
+build:
+  cmake: .

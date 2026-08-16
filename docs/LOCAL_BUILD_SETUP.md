@@ -205,6 +205,21 @@ chỉ đường ngược lại đúng bước docs này nếu thiếu.
 2. Làm tương tự nửa phải.
 3. Nạp lại firmware chính cho cả 2 → reset cùng lúc.
 
+### Cách màn hình custom hoạt động (QUAN TRỌNG nếu sửa)
+
+- Code custom nằm ở `config/status_screen_left.c` (màn trái: S/C/A/G modifiers,
+  HID indicators, pin, output, layer) và `config/status_screen_right.c`
+  (màn phải: bongo cat, pin, WiFi kết nối).
+- **ZMK KHÔNG tự compile code từ folder config/** — file `config/zephyr/module.yml`
+  biến folder này thành Zephyr module, và build script truyền
+  `-DZMK_EXTRA_MODULES=config/` để code được nhúng. Nếu build mà màn hìnhindi
+  không đổi theo code → thiếu flag này (triệu chứng: OLED nhiễu garbage).
+- Mỗi file `.c` trong `config/widgets/` phải `#include <lvgl.h>` **trước** mọi
+  header ZMK — macro `E` (keycode phím E) trong `keys.h` sẽ phá đường dẫn
+  `E:/...` trên Windows khi LVGL include config.
+- Đổi hiển thị của 2 nửa: sửa `config/sofle_left.conf` / `config/sofle_right.conf`
+  (mỗi nửa load file riêng của nó + `sofle.conf` chung).
+
 ## Sửa lỗi nhanh (troubleshooting)
 
 | Triệu chứng | Nguyên nhân | Cách fix |
