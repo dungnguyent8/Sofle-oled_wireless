@@ -1,20 +1,68 @@
 layout: {zmk_keyboard: sofle}
 layers:
-  default: [ESC, '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', +, CAPSLOCK, Q, W, E, R, T, Y, U, I, O, P, _, TAB, A, S, D, F, G, H, J, K, L, ;, '''', LEFT GUI,
-    Z, X, C, V, B, MUTE, '', N, M, ',', ., /, RSHFT, LEFT SHIFT, LALT, LCTRL, lower, SPACE, ENTER, raise, BACKSPACE, DELETE, '?']
-  lower:
+  default:
   - ESC
-  - '!'
-  - '@'
-  - '#'
-  - $
-  - '%'
-  - ^
-  - '&'
-  - '*'
-  - (
-  - )
+  - '1'
+  - '2'
+  - '3'
+  - '4'
+  - '5'
+  - '6'
+  - '7'
+  - '8'
+  - '9'
+  - '0'
   - '='
+  - {t: TAB, h: CAPS}
+  - Q
+  - W
+  - E
+  - R
+  - T
+  - Y
+  - U
+  - I
+  - O
+  - P
+  - '-'
+  - LSHFT
+  - A
+  - S
+  - D
+  - F
+  - G
+  - H
+  - J
+  - K
+  - L
+  - ;
+  - {t: '''', h: RIGHT SHIFT}
+  - LCTRL
+  - Z
+  - X
+  - C
+  - V
+  - B
+  - MUTE
+  - {t: lower, h: toggle}
+  - N
+  - M
+  - ','
+  - .
+  - /
+  - {t: \, h: RIGHT SHIFT}
+  - LEFT GUI
+  - LALT
+  - {t: APPLICATION, h: raise}
+  - {t: SPACE, h: lower}
+  - SPACE
+  - RET
+  - {t: BACKSPACE, h: lower}
+  - DEL
+  - {t: lower, h: toggle}
+  - {t: raise, h: toggle}
+  lower:
+  - {t: ▽, type: trans}
   - F1
   - F2
   - F3
@@ -26,33 +74,44 @@ layers:
   - F9
   - F10
   - F11
+  - {t: ▽, type: trans}
+  - {t: ▽, type: trans}
+  - {t: ▽, type: trans}
+  - {t: ▽, type: trans}
+  - {t: ▽, type: trans}
+  - {t: ▽, type: trans}
+  - INS
+  - PG UP
+  - UP
+  - HOME
+  - {t: ▽, type: trans}
   - F12
-  - TAB
-  - '!'
-  - '@'
-  - '#'
-  - $
-  - '%'
-  - ^
-  - '&'
-  - KP MULTIPLY
-  - (
-  - )
-  - '|'
   - {t: ▽, type: trans}
-  - '='
-  - '-'
-  - KP PLUS
+  - {t: ▽, type: trans}
+  - {t: ▽, type: trans}
+  - {t: ▽, type: trans}
+  - {t: ▽, type: trans}
+  - {t: ▽, type: trans}
+  - PSCRN
+  - LEFT
+  - DOWN
+  - RIGHT
   - '{'
-  - '}'
+  - {t: '}', h: RSHFT}
   - {t: ▽, type: trans}
   - {t: ▽, type: trans}
-  - '['
-  - ']'
-  - ;
-  - ':'
-  - \
   - {t: ▽, type: trans}
+  - {t: ▽, type: trans}
+  - {t: ▽, type: trans}
+  - {t: ▽, type: trans}
+  - {t: ▽, type: trans}
+  - {t: default, h: toggle}
+  - {t: ▽, type: trans}
+  - PAGE DOWN
+  - {t: ▽, type: trans}
+  - END
+  - Sft+{
+  - {t: 'Sft+}', h: (RIGHT CONTROL)}
   - {t: ▽, type: trans}
   - {t: ▽, type: trans}
   - {t: ▽, type: trans}
@@ -77,39 +136,35 @@ layers:
   - {t: ▽, type: trans}
   - {t: ▽, type: trans}
   - {t: ▽, type: trans}
-  - INS
-  - PSCRN
-  - CMENU
+  - Ctl+W
+  - {t: ▽, type: trans}
+  - Ctl+R
+  - Ctl+T
+  - {t: ▽, type: trans}
+  - Ctl+Y
   - {t: ▽, type: trans}
   - {t: ▽, type: trans}
-  - PG UP
   - {t: ▽, type: trans}
-  - UP
-  - {t: ▽, type: trans}
-  - '0'
+  - Ctl+P
   - {t: ▽, type: trans}
   - {t: ▽, type: trans}
-  - LALT
-  - LCTRL
-  - LSHFT
+  - Ctl+A
   - {t: ▽, type: trans}
-  - CLCK
-  - PG DN
-  - LEFT
-  - DOWN
-  - RIGHT
-  - DEL
-  - BSPC
-  - {t: ▽, type: trans}
-  - UNDO
-  - CUT
-  - COPY
-  - PASTE
+  - Ctl+F
+  - Ctl+G
   - {t: ▽, type: trans}
   - {t: ▽, type: trans}
   - {t: ▽, type: trans}
   - {t: ▽, type: trans}
   - {t: ▽, type: trans}
+  - {t: ▽, type: trans}
+  - {t: ▽, type: trans}
+  - {t: ▽, type: trans}
+  - Ctl+Z
+  - Ctl+X
+  - Ctl+C
+  - Ctl+V
+  - Ctl+B
   - {t: ▽, type: trans}
   - {t: ▽, type: trans}
   - {t: ▽, type: trans}
@@ -121,6 +176,10 @@ layers:
   - {t: ▽, type: trans}
   - {t: ▽, type: trans}
   - {type: held}
+  - {t: ▽, type: trans}
+  - {t: ▽, type: trans}
+  - {t: ▽, type: trans}
+  - {t: ▽, type: trans}
   - {t: ▽, type: trans}
   - {t: ▽, type: trans}
   - {t: ▽, type: trans}
@@ -177,11 +236,11 @@ layers:
   - ''
   - ''
   - ''
-  - ''
+  - {type: held}
   - {type: held}
   - ''
   - ''
-  - {type: held}
+  - ''
   - ''
   - ''
   - ''
