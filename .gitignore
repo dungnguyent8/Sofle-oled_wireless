@@ -1,1 +1,22 @@
-build
+# Build output
+build/
+
+# West workspace (west init tao .west/ trong repo khi build local)
+.west/
+
+# Source ZMK/Zephyr keo ve boi west update (KHONG commit - ~2.4GB)
+zephyr/
+zmk/
+modules/
+boot/
+tools/
+args/
+
+# Python
+venv/
+__pycache__/
+*.pyc
+
+# IDE / OS
+.DS_Store
+Thumbs.db
