@@ -135,7 +135,7 @@ layers:
   - {t: ▽, type: trans}
   - {t: ▽, type: trans}
   - {t: ▽, type: trans}
-  - {t: ▽, type: trans}
+  - {t: LALT, h: toggle}
   - Ctl+W
   - {t: ▽, type: trans}
   - Ctl+R
