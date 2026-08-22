@@ -1,3 +1,4 @@
 name: sofle_custom_screens
 build:
   cmake: .
+  kconfig: Kconfig.sofle

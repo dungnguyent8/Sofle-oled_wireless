@@ -60,6 +60,14 @@ int zmk_widget_modifiers_init(struct zmk_widget_modifiers *widget, lv_obj_t *par
     lv_obj_set_style_text_font(widget->obj, lv_theme_get_font_small(parent), LV_PART_MAIN);
     lv_label_set_text(widget->obj, "");
 
+#if IS_ENABLED(CONFIG_ZMK_DISPLAY_ROTATE_90_RIGHT)
+    // Man doc 64px: text "Sh + Ct + Al + Gi" (~100px) se bi clip 2 ben —
+    // gioi han rong 60 de wrap xuong dong + canh giua text
+    lv_obj_set_width(widget->obj, 60);
+    lv_label_set_long_mode(widget->obj, LV_LABEL_LONG_WRAP);
+    lv_obj_set_style_text_align(widget->obj, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+#endif
+
     sys_slist_append(&widgets, &widget->node);
 
     // Tick 100ms — nhanh hơn mắt người, cảm giác tức thì

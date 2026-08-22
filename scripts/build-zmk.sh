@@ -73,6 +73,15 @@ case "$TARGET" in
       "-DZMK_EXTRA_MODULES=$ZMK_CONFIG_DIR" \
       "-DEXTRA_DTC_OVERLAY_FILE=$ZMK_CONFIG_DIR/oled_128x64_left.overlay"
     ;;
+  diag)
+    # Diagnostic OLED trai: pattern 4 o vuong + TEST 123 (khong widget)
+    rm -rf "build/sofle_diag"
+    "$VENV_BIN/west.exe" build -s zmk/app -b nice_nano_v2 -d "build/sofle_diag" \
+      -- "-DZMK_CONFIG=$ZMK_CONFIG_DIR" -DSHIELD=sofle_left \
+      "-DZMK_EXTRA_MODULES=$ZMK_CONFIG_DIR" \
+      "-DEXTRA_DTC_OVERLAY_FILE=$ZMK_CONFIG_DIR/oled_128x64_left.overlay" \
+      -DCONFIG_ZMK_DISPLAY_ROTATE_90_RIGHT=y -DCONFIG_ZMK_DISPLAY_ROTATE_DIAG=y
+    ;;
   right)
     build sofle_right -DSHIELD=sofle_right "-DZMK_EXTRA_MODULES=$ZMK_CONFIG_DIR"
     ;;

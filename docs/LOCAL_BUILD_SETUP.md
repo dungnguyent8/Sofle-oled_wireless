@@ -275,10 +275,59 @@ Nếu bàn của bạn còn màn gốc 0.96" 128x32, edit 3 chỗ sau rồi buil
 Không cần xóa file `config/oled_128x64_left.overlay` (flag không truyền thì file bị bỏ qua,
 không tự nạp). Không đụng `zmk/`, `sofle.conf` hay bất kỳ file nào khác.
 
-### Nếu màn SH1106 vẫn lệch ~2 pixel ngang
+### Nếu màn SH1106 vẫn lệch ~2 pixel ngang — ĐÃ TÉ, ĐÃ FIX (verify 23/08/2026)
 
-SH1106 có RAM 132 cột, panel dùng 128 → có thể cần thêm `segment-offset = <2>;`
-vào overlay rồi build lại (tùy module).
+**SH1106 có GRAM 132 cột nhưng panel chỉ hiển thị 128.** Panel 1.3" của repo này map
+window GRAM[2..129], trong khi driver mặc định ghi cols 0..127:
+
+- 2 cột cuối (GRAM[128..129]) **không bao giờ được ghi** → giữ garbage khởi động
+- Triệu chứng khi xoay 90° CW: hiện thành **2 dòng nhiễu trắng đen nằm ngoài khung UI,
+  ở mép cạnh 64px của màn** (2 cột GRAM bị lộ). Nội dung render của mình thì sạch.
+- **Fix: `segment-offset = <2>;`** trong `oled_128x64_left.overlay` — dịch vùng ghi ra
+  GRAM[2..129] khớp window panel. Nhầm lẫn phải tránh: `display-offset` (trục COM/dọc)
+  KHÔNG tác dụng với lỗi này — noise nằm trục cột thì chỉ `segment-offset` ăn.
+
+### Cách debug màn hình bằng pattern diagnostic (target `diag`)
+
+Khi màn có artifact mà không rõ lỗi nằm ở tầng nào (LVGL render / transpose / driver):
+
+```bash
+bash scripts/build-zmk.sh diag
+```
+
+Bản này **bỏ qua toàn bộ LVGL render** — vẽ thẳng vào buffer vật lý trong flush callback:
+nền trắng + 4 ô vuông đen 8x8 ở 4 góc vật lý (không widget, không text). Flash
+`build/sofle_diag/zephyr/zmk.uf2` rồi đối chiếu:
+
+| Quan sát | Kết luận |
+|---|---|
+| 4 ô vuông sạch, artifact vẫn ở ngoài khung | lỗi **map GRAM panel** → chỉnh `segment-offset`/`display-offset` trong overlay |
+| 4 ô vuông sạch, artifact biến mất | lỗi ở **LVGL render/widget** (không phải display path) |
+| Ô vuông méo/sai vị trí | lỗi **math transpose** trong `display_rotation.c` |
+
+Công cụ này giữ lại trong repo: Kconfig `CONFIG_ZMK_DISPLAY_ROTATE_DIAG` (default n,
+enable bởi target `diag` của build script). Khỏi cần viết lại khi gặp lỗi hiển thị sau này.
+
+## Xoay màn OLED trái 90° (top → cạnh phải) — cấu trúc hiện tại
+
+Panel trái được **gắn xoay dọc**: UI logic là màn dọc **64×128**, vật lý vẫn 128×64.
+
+- **`config/display_rotation.c`**: sau khi LVGL init, đổi `hor_res=64/ver_res=128`,
+  thay `flush_cb` bằng hàm transpose tự viết (mapping `px=127−ly, py=lx`), buffer
+  full-frame 1KB persistent — chỉ ghi I2C 1 lần/frame. Gọi từ
+  `zmk_display_status_screen()` TRƯỚC khi tạo widget.
+- **Bật/tắt**: `CONFIG_ZMK_DISPLAY_ROTATE_90_RIGHT` trong `sofle_left.conf`
+  (đang bật). Tắt = layout ngang 128×64 cũ trong `#else` của `status_screen_left.c`.
+- **Bắt buộc đi kèm khi xoay** (đã té, đừng lặp lại):
+  1. `CONFIG_LV_Z_VDB_SIZE=100` — VDB nhỏ hơn chia frame thành nhiều chunk,
+     vùng nối chunk chứa byte stale từ chunk trước → artifact vệt chấm sau transpose.
+  2. `CONFIG_LV_USE_FLEX=y` — layout dọc dùng flex column.
+  3. `CONFIG_ZMK_LV_FONT_DEFAULT_SMALL_MONTSERRAT_8=y` — font nhỏ cho màn 64px
+     (Montserrat 8 vẫn đủ glyph FontAwesome: USB/WIFI/BATTERY — đã verify).
+  4. Tắt scrollbar/border screen trong `status_screen_left.c` (đã có trong code).
+- SH1106/SSD1306 **không thể** xoay 90° bằng lệnh hardware (chỉ có lật 0°/180° qua
+  `segment-remap`/`com-invdir`); LVGL `sw_rotate` cũng không dùng được cho màn mono
+  `set_px_cb` — nên mới phải transpose software như trên.
 
 ## Sửa lỗi nhanh (troubleshooting)
 
@@ -294,6 +343,8 @@ vào overlay rồi build lại (tùy module).
 | OLED trái nhiễu trắng đen loạn xạ, vài chữ lóe được, bàn phím vẫn gõ OK | panel 1.3" là **SH1106** nhưng firmware chạy driver ssd1306fb | giữ overlay `oled_128x64_left.overlay` (`compatible = "sinowealth,sh1106"`) + build qua `scripts/build-zmk.sh left` |
 | Devicetree error `undefined node label 'oled'` | file overlay đặt tên `{shield}.overlay` trong `config/` → bị nạp trước shield | đổi tên file (vd `oled_128x64_left.overlay`) + truyền `-DEXTRA_DTC_OVERLAY_FILE` |
 | OLED 128x64 hiện nội dung nhưng bị nén/dúp ở nửa trên | thiếu `height=64`/`multiplex-ratio=63` hoặc dư `com-sequential` | kiểm tra overlay đủ 3 thay đổi như mục "Đã thay OLED trái" |
+| 1-2 dòng/cột nhiễu nằm NGOÀI khung UI trên cạnh màn (nội dung vẫn sạch) | panel SH1106 map window GRAM lệch — vùng không được ghi giữ garbage | `segment-offset = <2>;` trong `oled_128x64_left.overlay` (mục "lệch ~2 pixel"); xác nhận bằng `build-zmk.sh diag` |
+| Vệt chấm rác theo băng 8px SAU khi bật xoay 90° | VDB < 100% chia frame thành chunk, vùng nối chứa byte stale | `CONFIG_LV_Z_VDB_SIZE=100` trong `sofle_left.conf` |
 
 ## Đổi keymap không cần build lại
 

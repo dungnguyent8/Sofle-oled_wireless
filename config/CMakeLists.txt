@@ -8,6 +8,11 @@
 # Không có nó, firmware chạy weak stub NULL → OLED nhiễu garbage.
 
 if(CONFIG_ZMK_DISPLAY AND CONFIG_ZMK_DISPLAY_STATUS_SCREEN_CUSTOM)
+  # Xoay 90° man trai (compile luon; runtime kiem tra CONFIG trong ham setup)
+  if(CONFIG_ZMK_SPLIT_ROLE_CENTRAL)
+    target_sources(app PRIVATE display_rotation.c)
+  endif()
+
   # Compile vào target "app" (giống ZMK core widgets) — target app đã có
   # đầy đủ include paths đúng cho zmk/*.h + lvgl.h, không bị lỗi LV_CONF_PATH
   # như khi dùng zephyr_library() riêng.

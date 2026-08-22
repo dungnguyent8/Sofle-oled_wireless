@@ -28,5 +28,13 @@
     compatible = "sinowealth,sh1106";
     height = <64>;
     multiplex-ratio = <63>;
+    /* SH1106 GRAM 132 cot, panel 128 — diagnostic 23/08 pin dia: noise la
+     * DAI DOC cao 64px o canh (truc column/segment). Panel nay map window
+     * GRAM[2..129]: driver ghi cols 0..127 → GRAM[128..129] KHONG duoc ghi
+     * = garbage o 1-2 cot cuoi → sau khi xoay 90° CW hien thanh "2 dong
+     * tren top" man doc. segment-offset dich vung ghi +2 cot cho khop.
+     * (display-offset da thu = KHONG tac dung voi loi nay.)
+     */
+    segment-offset = <2>;
     /delete-property/ com-sequential;
 };

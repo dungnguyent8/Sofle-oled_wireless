@@ -1,0 +1,21 @@
+# Copyright (c) 2026
+# SPDX-License-Identifier: MIT
+
+config ZMK_DISPLAY_ROTATE_90_RIGHT
+	bool "Rotate OLED content 90 degrees clockwise (top edge becomes right edge)"
+	default n
+	depends on ZMK_DISPLAY
+	help
+	  Xoay noi dung man OLED trai 90° theo chieu kim dong ho: canh tren
+	  (top) thanh canh phai. UI se thanh man DUNG 64 x 128 (vat ly van
+	  128 x 64). Chi ap dung cho build nua trai (central). Yeu cau
+	  config/zephyr/module.yml co kconfig file nay duoc tham chieu.
+
+config ZMK_DISPLAY_ROTATE_DIAG
+	bool "Diagnostic pattern for rotated screen (no widgets, corner markers)"
+	default n
+	depends on ZMK_DISPLAY_ROTATE_90_RIGHT
+	help
+	  Man hinh chi ve: 4 o vuong 4x4 o 4 goc + label "TEST 123" giua.
+	  Dung de cach ly loi artifact cham tran: neu pattern sach ma van co
+	  cham → loi tai tang driver/GRAM; neu cham mat → loi widget render.
