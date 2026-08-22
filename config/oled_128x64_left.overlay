@@ -1,0 +1,32 @@
+/*
+ * OLED MAN TRAI: thay panel 128x32/0.96" -> 128x64/1.3" (I2C 0x3C)
+ * Panel 1.3 inch gan nhu luon dung driver SH1106 (khac SSD1306 o lenh
+ * addressing: khong ho tro Set Column/Page Address 0x21/0x22). Giu
+ * compatible ssd1306fb thi man nhiễu trang den loan xa + vai chu lech cot
+ * (da thay tren phan cung that 2026-08-22). Doi sang "sinowealth,sh1106"
+ * de driver Zephyr dung giao thuc ghi page-based cua SH1106.
+ *
+ * File nay KHONG duoc dat ten theo mau {shield}.overlay / {shield}_{board}.overlay
+ * vi build system ZMK tu nop cac file do TRUOC shield -> &oled chua ton tai
+ * (loi "undefined node label 'oled'"). Thay vao do, scripts/build-zmk.sh truyen
+ * -DEXTRA_DTC_OVERLAY_FILE=... -> Zephyr ap file nay CUOI CUNG (sau shield + keymap),
+ * luc do label &oled da duoc dinh nghia trong sofle.dtsi.
+ *
+ * Chi ap dung cho build nua TRAI (sofle_left). Nua phai van 128x32 -> khong truyen
+ * file nay khi build right.
+ *
+ * Thay doi so voi config 128x32 goc trong shield:
+ *   - compatible: ssd1306fb -> sinowealth,sh1106  (driver page-addressing)
+ *   - height: 32 -> 64
+ *   - multiplex-ratio: 31 -> 63   (panel 64 dong)
+ *   - XOA com-sequential:         panel 128x64 dung COM xung phu ALTERNATIVE;
+ *     giu sequential nhu 128x32 -> man hinh rac
+ * Giu nguyen segment-remap + com-invdir (orientation goc Sofle).
+ */
+
+&oled {
+    compatible = "sinowealth,sh1106";
+    height = <64>;
+    multiplex-ratio = <63>;
+    /delete-property/ com-sequential;
+};

@@ -136,11 +136,14 @@ export ZEPHYR_SDK_INSTALL_DIR=/e/project/keyboard/zmk-build-tools/zephyr-sdk-0.1
 Build từng firmware (mirror đúng `build.yaml` của repo):
 
 ```bash
-# Nửa trái (central) — có ZMK Studio + USB RPC
+# Nửa trái (central) — có ZMK Studio + USB RPC + OLED 128x64 SH1106
+# ⚠️ -DEXTRA_DTC_OVERLAY_FILE là BẮT BUỘC cho OLED trái (panel SH1106 1.3").
+# Không có flag này → firmware quay về driver 128x32 SSD1306 → màn nhiễu.
 rm -rf build/sofle_left
 west build -s zmk/app -b nice_nano_v2 -d build/sofle_left -- \
   -DZMK_CONFIG="E:/project/keyboard/Sofle-oled_wireless/config" \
-  -DSHIELD=sofle_left -DCONFIG_ZMK_STUDIO=y -S studio-rpc-usb-uart
+  -DSHIELD=sofle_left -DCONFIG_ZMK_STUDIO=y -S studio-rpc-usb-uart \
+  -DEXTRA_DTC_OVERLAY_FILE="E:/project/keyboard/Sofle-oled_wireless/config/oled_128x64_left.overlay"
 
 # Nửa phải (peripheral)
 rm -rf build/sofle_right
@@ -220,6 +223,63 @@ chỉ đường ngược lại đúng bước docs này nếu thiếu.
 - Đổi hiển thị của 2 nửa: sửa `config/sofle_left.conf` / `config/sofle_right.conf`
   (mỗi nửa load file riêng của nó + `sofle.conf` chung).
 
+## Đã thay OLED trái 128x32 → 128x64 (1.3 inch) — SH1106
+
+> Ghi chú verify 22/08/2026. Nửa **trái** giờ dùng panel 1.3" 128x64;
+> nửa **phải** vẫn OLED 0.96" 128x32 gốc (2 nửa KHÔNG interchange được firmware OLED config).
+
+### Chuỗi vấn đề đã té (đọc để không lặp lại)
+
+1. **Panel 1.3 inch 128x64 ≈ luôn là driver SH1106**, không phải SSD1306 như panel 0.96".
+   Hai chip gần giống nhau trừ phần *addressing*: SSD1306 có lệnh `Set Column/Page Address
+   (0x21/0x22)`, SH1106 **không có** → firmware ssd1306fb ghi dữ liệu lệch vùng RAM.
+   Triệu chứng: màn nhiễu trắng đen loạn xạ + vài chữ vẫn lóe được + nhấp nháy theo layer
+   (MCU chạy bình thường, bàn phím vẫn gõ được). KHÔNG phải lỗi phần cứng/solder.
+2. Giữ nguyên config shield 128x32 cũng sai tiếp: `height=32`, `multiplex-ratio=31`,
+   `com-sequential` đều là tham số của panel 32 dòng — panel 64 dòng cần `height=64`,
+   `multiplex-ratio=63`, và KHÔNG dùng `com-sequential` (COM pins Alternative).
+
+### Cách đã fix (cấu trúc hiện tại)
+
+- File `config/oled_128x64_left.overlay` override node `&oled`:
+  đổi `compatible = "sinowealth,sh1106"` (driver Zephyr có sẵn, giao thức page-based đúng),
+  `height = <64>`, `multiplex-ratio = <63>`, `/delete-property/ com-sequential`.
+- **Bẫy đặt tên file**: KHÔNG được đặt tên `sofle_left.overlay` / `sofle_left_nice_nano_v2.overlay`
+  trong `config/` — build system ZMK tự nạp các file theo tên đó **trước** shield dtsi,
+  tại thời điểm đó label `&oled` chưa tồn tại → lỗi devicetree
+  `parse error: undefined node label 'oled'`.
+- Vì vậy `scripts/build-zmk.sh` (target `left` và `all`) truyền thêm
+  `-DEXTRA_DTC_OVERLAY_FILE=$ZMK_CONFIG/oled_128x64_left.overlay` → Zephyr áp file này
+  **cuối cùng** (sau board dts + shield + keymap), khi `&oled` đã định nghĩa.
+  Target `right`/`reset` KHÔNG truyền — nửa phải giữ OLED 128x32 gốc.
+
+### Nếu sau này đổi OLED nửa phải sang 128x64
+
+Copy `oled_128x64_left.overlay` thành `oled_128x64_right.overlay` và truyền
+`-DEXTRA_DTC_OVERLAY_FILE` tương ứng trong case `right` của `scripts/build-zmk.sh`.
+Lưu ý widget bongo cat của nửa phải đang vẽ layout cho 32px — cần chỉnh lại
+`status_screen_right.c` cho 64px.
+
+### Dùng màn OLED gốc 128x32 mặc định (nếu bạn KHÔNG thay panel như trên)
+
+Mặc định repo này đang build cho OLED trái 1.3" 128x64 (biến thể của chủ repo).
+Nếu bàn của bạn còn màn gốc 0.96" 128x32, edit 3 chỗ sau rồi build lại như bình thường:
+
+1. **`build.yaml`** (build GitHub Actions): ở mục `sofle_left`, xóa phần
+   `-DEXTRA_DTC_OVERLAY_FILE=config/oled_128x64_left.overlay` khỏi `cmake-args`
+   (giữ lại `-DCONFIG_ZMK_STUDIO=y`).
+2. **`scripts/build-zmk.sh`** (build local): xóa dòng
+   `"-DEXTRA_DTC_OVERLAY_FILE=$ZMK_CONFIG_DIR/oled_128x64_left.overlay"` ở cả 2 case `left` và `all`.
+3. Nửa phải không cần đụng gì — vẫn 128x32 mặc định.
+
+Không cần xóa file `config/oled_128x64_left.overlay` (flag không truyền thì file bị bỏ qua,
+không tự nạp). Không đụng `zmk/`, `sofle.conf` hay bất kỳ file nào khác.
+
+### Nếu màn SH1106 vẫn lệch ~2 pixel ngang
+
+SH1106 có RAM 132 cột, panel dùng 128 → có thể cần thêm `segment-offset = <2>;`
+vào overlay rồi build lại (tùy module).
+
 ## Sửa lỗi nhanh (troubleshooting)
 
 | Triệu chứng | Nguyên nhân | Cách fix |
@@ -231,6 +291,9 @@ chỉ đường ngược lại đúng bước docs này nếu thiếu.
 | `dtc: command not found` / devicetree fail | thiếu dtc | Bước 4 — pacman MSYS2 |
 | `west init` báo `no west.yml found` | trỏ sai thư mục | `west init -l config` (từ gốc repo) |
 | Build sai tên board/chưa có UF2 | thiếu `-DZMK_CONFIG` | copy nguyên lệnh ở Bước 6 |
+| OLED trái nhiễu trắng đen loạn xạ, vài chữ lóe được, bàn phím vẫn gõ OK | panel 1.3" là **SH1106** nhưng firmware chạy driver ssd1306fb | giữ overlay `oled_128x64_left.overlay` (`compatible = "sinowealth,sh1106"`) + build qua `scripts/build-zmk.sh left` |
+| Devicetree error `undefined node label 'oled'` | file overlay đặt tên `{shield}.overlay` trong `config/` → bị nạp trước shield | đổi tên file (vd `oled_128x64_left.overlay`) + truyền `-DEXTRA_DTC_OVERLAY_FILE` |
+| OLED 128x64 hiện nội dung nhưng bị nén/dúp ở nửa trên | thiếu `height=64`/`multiplex-ratio=63` hoặc dư `com-sequential` | kiểm tra overlay đủ 3 thay đổi như mục "Đã thay OLED trái" |
 
 ## Đổi keymap không cần build lại
 

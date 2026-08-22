@@ -13,10 +13,14 @@
 #
 ---
 include:
+  # Nửa trái: OLED đã thay bằng panel 1.3" 128x64 (SH1106) — cần overlay
+  # EXTRA_DTC_OVERLAY_FILE. Ai dùng màn gốc 0.96" 128x32: XÓA flag
+  # `-DEXTRA_DTC_OVERLAY_FILE=...` ở dưới (giữ nguyên -DCONFIG_ZMK_STUDIO=y)
+  # — xem docs/LOCAL_BUILD_SETUP.md mục "OLED gốc 128x32".
   - board: nice_nano_v2
     shield: sofle_left
     snippet: studio-rpc-usb-uart
-    cmake-args: -DCONFIG_ZMK_STUDIO=y
+    cmake-args: -DCONFIG_ZMK_STUDIO=y -DEXTRA_DTC_OVERLAY_FILE=config/oled_128x64_left.overlay
   - board: nice_nano_v2
     shield: sofle_right
   - board: nice_nano_v2

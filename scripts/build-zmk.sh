@@ -70,7 +70,8 @@ build () {
 case "$TARGET" in
   left)
     build sofle_left -S:studio-rpc-usb-uart -DSHIELD=sofle_left -DCONFIG_ZMK_STUDIO=y \
-      "-DZMK_EXTRA_MODULES=$ZMK_CONFIG_DIR"
+      "-DZMK_EXTRA_MODULES=$ZMK_CONFIG_DIR" \
+      "-DEXTRA_DTC_OVERLAY_FILE=$ZMK_CONFIG_DIR/oled_128x64_left.overlay"
     ;;
   right)
     build sofle_right -DSHIELD=sofle_right "-DZMK_EXTRA_MODULES=$ZMK_CONFIG_DIR"
@@ -80,7 +81,8 @@ case "$TARGET" in
     ;;
   all|*)
     build sofle_left -S:studio-rpc-usb-uart -DSHIELD=sofle_left -DCONFIG_ZMK_STUDIO=y \
-      "-DZMK_EXTRA_MODULES=$ZMK_CONFIG_DIR"
+      "-DZMK_EXTRA_MODULES=$ZMK_CONFIG_DIR" \
+      "-DEXTRA_DTC_OVERLAY_FILE=$ZMK_CONFIG_DIR/oled_128x64_left.overlay"
     build sofle_right -DSHIELD=sofle_right "-DZMK_EXTRA_MODULES=$ZMK_CONFIG_DIR"
     build settings_reset -DSHIELD=settings_reset
     ;;
