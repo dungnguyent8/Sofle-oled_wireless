@@ -199,7 +199,8 @@ chỉ đường ngược lại đúng bước docs này nếu thiếu.
 
 - Nạp `CURRENT.UF2` (file backup bootloader tự sinh) của nửa này sang nửa kia —
   2 nửa cần 2 firmware khác nhau (central vs peripheral).
-- Cắm/rút cáp TRRS khi keyboards đang通电.
+- Cắm/rút cáp TRRS khi bàn phím đang có điện — luôn ngắt nguồn (tắt switch
+  pin hoặc rút cáp) trước khi cắm/rút TRRS.
 
 ### Nếu 2 nửa không pair được nhau (bond cũ xung đột)
 
@@ -211,8 +212,8 @@ chỉ đường ngược lại đúng bước docs này nếu thiếu.
 ### Cách màn hình custom hoạt động (QUAN TRỌNG nếu sửa)
 
 - Code custom nằm ở `config/status_screen_left.c` (màn trái: S/C/A/G modifiers,
-  HID indicators, pin, output, layer) và `config/status_screen_right.c`
-  (màn phải: bongo cat, pin, WiFi kết nối).
+  HID indicators, pin + mV, bongo cat, trang info ADJUST — xem mục riêng) và
+  `config/status_screen_right.c` (màn phải: bongo cat, pin, WiFi kết nối).
 - **ZMK KHÔNG tự compile code từ folder config/** — file `config/zephyr/module.yml`
   biến folder này thành Zephyr module, và build script truyền
   `-DZMK_EXTRA_MODULES=config/` để code được nhúng. Nếu build mà màn hìnhindi
@@ -275,7 +276,7 @@ Nếu bàn của bạn còn màn gốc 0.96" 128x32, edit 3 chỗ sau rồi buil
 Không cần xóa file `config/oled_128x64_left.overlay` (flag không truyền thì file bị bỏ qua,
 không tự nạp). Không đụng `zmk/`, `sofle.conf` hay bất kỳ file nào khác.
 
-### Nếu màn SH1106 vẫn lệch ~2 pixel nzzgang — ĐÃ TÉ, ĐÃ FIX (verify 23/08/2026)
+### Nếu màn SH1106 vẫn lệch ~2 pixel ngang — ĐÃ TÉ, ĐÃ FIX (verify 23/08/2026)
 
 **SH1106 có GRAM 132 cột nhưng panel chỉ hiển thị 128.** Panel 1.3" của repo này map
 window GRAM[2..129], trong khi driver mặc định ghi cols 0..127:
@@ -322,12 +323,148 @@ Panel trái được **gắn xoay dọc**: UI logic là màn dọc **64×128**, 
   1. `CONFIG_LV_Z_VDB_SIZE=100` — VDB nhỏ hơn chia frame thành nhiều chunk,
      vùng nối chunk chứa byte stale từ chunk trước → artifact vệt chấm sau transpose.
   2. `CONFIG_LV_USE_FLEX=y` — layout dọc dùng flex column.
-  3. `CONFIG_ZMK_LV_FONT_DEFAULT_SMALL_MONTSERRAT_8=y` — font nhỏ cho màn 64px
-     (Montserrat 8 vẫn đủ glyph FontAwesome: USB/WIFI/BATTERY — đã verify).
+  3. Font hiện tại **Montserrat 12** (đã thử 8 — quá nhỏ, revert 23/08;
+     Montserrat vẫn đủ glyph FontAwesome: USB/WIFI/BATTERY — verify bằng
+     `scripts/list_font_symbols.py`).
   4. Tắt scrollbar/border screen trong `status_screen_left.c` (đã có trong code).
 - SH1106/SSD1306 **không thể** xoay 90° bằng lệnh hardware (chỉ có lật 0°/180° qua
   `segment-remap`/`com-invdir`); LVGL `sw_rotate` cũng không dùng được cho màn mono
   `set_px_cb` — nên mới phải transpose software như trên.
+
+## Trang info layer ADJUST (giữ raise+lower) — màn trái
+
+> Thêm 23/08/2026 (sửa cuối 23/08 cùng ngày). Khi layer ADJUST active, màn trái
+> đổi thành trang **thông số kết nối/pin**; nhả phím thì về layout thường.
+> Đã từng có CPU%/RAM% MCU — đã BỎ theo yêu cầu (số liệu MCU vô nghĩa cho user,
+> và đo đúng bị chặn: `lv_mem_monitor()` không hoạt động vì Zephyr LVGL dùng
+  `LV_MEM_CUSTOM=y` + heap static không expose; CPU% thì `k_thread_foreach`
+  cần `CONFIG_THREAD_MONITOR`... chi tiết xem git history nếu cần lại).
+
+### Layout 2 chế độ
+
+**Layer thường (default/lower/raise)**: pin trái `🔋 85%` (icon mức + % theo
+curve LiPo — mV thật chỉ hiện khi ADJUST) → output `▶ USB`/BT profile
+(**luôn hiện mọi layer**) → modifiers `S+C+A+G` → bongo cat → CAPS icon 👁
+(chỉ khi bật) → tên layer.
+
+**Layer ADJUST**: pin trái đầu màn đổi thành 2 dòng `🔋 85%` / `3.92V`
+(dòng 2 thêm ⚡ khi đang sạc), output + bongo + modifiers + CAPS ẩn hết,
+thay bằng container info:
+
+```
+🔋 85%
+3.92V         ← pin TRÁI: % + mV thật (2 dòng — 1 dòng tràn 64px)
+🔋 72%        ← pin NỬA PHẢI: % theo curve (✗ -- khi mất kết nối split)
+↻ Up 3d2h     ← uptime từ boot
+adjust        ← tên layer
+```
+
+Khi adjust: bongo cat + modifiers + CAPS đều ẩn (`LV_OBJ_FLAG_HIDDEN`) — trang info thuần.
+
+### Cách hoạt động (quan trọng nếu sửa)
+
+- **Ẩn/hiện theo layer**: `ZMK_LISTENER` bắt `zmk_layer_state_changed`, soi
+  `ev->layer == 3` (ADJUST). Toggle trong `lv_async_call` để chạy ở display thread.
+  Đổi thứ tự layer trong `sofle.keymap` → phải sửa `ADJUST_LAYER_INDEX` trong
+  `status_screen_left.c`.
+- **Pin phải**: widget `config/widgets/peripheral_battery.c` subscribe
+  `zmk_peripheral_battery_state_changed` (event chỉ được raise khi
+  `CONFIG_ZMK_SPLIT_BLE_CENTRAL_BATTERY_LEVEL_FETCHING=y` — đã bật trong
+  `sofle_left.conf`; xem `zmk/app/src/split/central.c`). Refresh theo
+  `CONFIG_ZMK_BATTERY_REPORT_INTERVAL` (60s). Mất kết nối → listener
+  `zmk_split_peripheral_status_changed` đưa về `✗ --`.
+- **mV pin trái** (`widgets/battery_full.c`): đọc
+  `SENSOR_CHAN_GAUGE_VOLTAGE` (⚠️ KHÔNG phải `SENSOR_CHAN_VOLTAGE` — driver
+  vbatt chỉ chấp nhận kênh `GAUGE_*`, gọi sai channel thì fetch trả -ENOTSUP
+  và mV luôn 0 — đã té) từ node `vbatt` (VDDH/5), lọc trung bình 5 mẫu chống
+  voltage sag. mV là số đo THẬT — với pin 5000mAh tự độ, dựa mV để tự phán
+  đoán mức thật thay vì % curve tuyến tính của ZMK.
+- Container info dùng `LV_SIZE_CONTENT` (chiều cao theo nội dung) — không đặt
+  chiều cao cứng + `lv_obj_center` kẻo dòng cuối bị layer label che (đã té).
+- Uptime chỉ refresh 1s/lần **khi adjust đang hiện** (check `adjust_active`
+  đầu callback) — không tốn điện khi không xem.
+
+## Pin: curve LiPo + mV 2 nửa (23/08/2026) — mV phải ĐÃ VÔ HIỆU
+
+> **Trạng thái hiện tại (v3, cuối 23/08)**: % pin **cả 2 nửa theo curve LiPo
+> 14 điểm mới** (đã verify chain). **mV nửa phải đã BỎ** — characteristic
+> riêng (UUID 0x07) không được central discovery ra sau khi flash + bond
+> lại + settings reset (nguyên nhân gốc chưa xác định, nghi GATT cache /
+> discovery race). Code central giữ trong `#if 0` để re-enable sau.
+> mV pin **trái vẫn hoạt động** (đọc trực tiếp ADC, không qua BLE).
+
+### Tóm tắt hành vi mới
+
+| Vị trí | Layer thường | Layer ADJUST |
+|---|---|---|
+| Màn trái — pin trái | `🔋 85%` (curve LiPo) | `🔋 85%` + dòng 2 `3.92V` (ADC trực tiếp) |
+| Màn trái — pin phải | ẩn | `🔋 72%` (curve LiPo, qua BAS BLE) |
+| Màn phải (128x32) | BAS % curve mới | không đổi |
+
+- % trái tính từ **curve LiPo 14 điểm** áp lên mV đã lọc trung bình 5 mẫu —
+  không còn dùng % tuyến tính của ZMK core (sai ±10-15% giữa dải plateau).
+- Pin phải: chỉ % qua BAS (60s/lần theo `REPORT_INTERVAL`), tính bằng
+  curve mới ở driver `nrf_vddh` → `lithium_ion_mv_to_pct` (đã patch).
+- **Event pin giờ raise khi % đổi HOẶC mV đổi ≥ 30mV** (patch v2 trong
+  `battery.c`): trước đây chỉ raise khi % đổi → trên plateau LiPo % đứng
+  yên hàng giờ. 30mV = ngưỡng trên noise ADC + voltage sag.
+- **Format 2 DÒNG khi adjust** (`icon %\nmV`): 1 dòng `icon 85% 3.92V`
+  = ~79px theo adv_w Montserrat 12 → **tràn màn dọc 64px/60px khả dụng**
+  (đã đo bằng script parse `glyph_dsc[]` + `unicode_list_1` của font,
+  23/08 — nhớ đo lại nếu đổi font).
+- **Nâng cấp firmware BẮT BUỘC đồng thời 2 nửa** — struct event + GATT
+  service đổi, chạy song song phiên bản cũ sẽ mất mV (không mất chức năng
+  chính, mV phải chỉ hiện `--`).
+
+### Cách hoạt động (8 file patch trong cây `zmk/`)
+
+Đây là patch thẳng vào ZMK v0.3.0 local — **mất khi `west update` / nâng
+version ZMK**, phải patch lại thủ công (xem danh sách + mô tả dưới):
+
+1. `zmk/app/include/zmk/split/transport/types.h` — struct
+   `battery_event` thêm trường `uint16_t millivolts`.
+2. `zmk/app/include/zmk/events/battery_state_changed.h` — cả 2 event
+   `zmk_battery_state_changed` + `zmk_peripheral_battery_state_changed`
+   thêm trường `uint16_t millivolts`.
+3. `zmk/app/src/battery.c` — khi fetch `STATE_OF_CHARGE` cũng đọc
+   `SENSOR_CHAN_GAUGE_VOLTAGE` điền `last_millivolts`, raise event kèm mV.
+4. `zmk/app/src/split/peripheral.c` — report pin gửi kèm `.millivolts`.
+5. `zmk/app/include/zmk/split/bluetooth/uuid.h` — characteristic mV mới
+   `ZMK_SPLIT_BT_CHAR_BATTERY_MV_UUID = ZMK_BT_SPLIT_UUID(0x00000007)`.
+6. `zmk/app/src/split/bluetooth/service.c` — phía peripheral: định nghĩa
+   characteristic mV (read + notify + CCC), listener `battery_state_changed`
+   cập nhật giá trị + `bt_gatt_notify_uuid()` cho subscriber. ⚠️ Signature
+   Zephyr 3.5: `(conn, uuid, attr, data, len)` — thiếu `attr` là compile fail.
+7. `zmk/app/src/split/bluetooth/central.c` — phía central: code mV nằm
+   trong `#if 0` (VÔ HIỆU từ v3 — discovery không tìm ra char). Khi bật
+   lại: else-if subscribe PHẢI cùng chuỗi if/else với BAS — đóng chain
+   bằng `}` rồi mở `else if` mới sẽ lỗi `unterminated #if`/compile fail.
+8. `zmk/app/src/split/central.c` — handler `BATTERY_EVENT` giữ
+   `peripheral_soc[]` per-source; **level=255 = bản update mV-only, giữ % cũ**
+   (BAS % notify và mV notify đến độc lập).
+
+Ngoài ra (patch giai đoạn trước, cùng loạt): `zmk/app/module/drivers/sensor/
+battery/battery_common.c` — thay `lithium_ion_mv_to_pct()` bằng curve LiPo
+14 điểm giống hệt widget trái → **% BAS gửi Windows + % hiển thị 2 nửa đều
+theo curve mới**.
+
+### Calibrate curve cho pin cụ thể
+
+Bảng 14 điểm `lipo_mv[]/lipo_pct[]` nằm ở 2 chỗ (giữ đồng bộ khi sửa):
+`config/widgets/battery_full.c` (màn trái) + `battery_common.c` (driver
+chia sẻ). Sau 1-2 chu kỳ sạc/xả, bật layer ADJUST xem mV thật ở các mốc
+% rồi chỉnh bảng — đặc biệt 2 đầu (3.45-3.6V = 0-9%, 4.1-4.2V = 92-100%).
+
+### Troubleshooting tính năng pin
+
+- **% phải không hiện / `✗ --` mãi**: kiểm tra bond 2 nửa (settings reset
+  cả 2 + pair lại); % chạy đường BAS stock nên firmware lệch version vẫn OK.
+- **% trái nhảy cấp** khi vừa gõ nặng/mới BLE TX: đã có filter 5 mẫu; nếu
+  vẫn thấy giật, tăng `MV_FILTER_LEN` (5 → 8).
+- **mV phải (char UUID 0x07) không discovery được** — đã té cả 3 lần, chưa
+  rõ gốc (đã thử: flash đồng bộ 2 nửa, settings reset + bond lại, initial
+  read sau subscribe). Code giữ trong `#if 0` ở `central.c`; nếu muốn
+  điều tra lại thì bật `#if 1` + xem LOG_DBG "Found battery mV characteristics".
 
 ## Sửa lỗi nhanh (troubleshooting)
 
