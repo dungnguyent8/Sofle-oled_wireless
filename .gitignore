@@ -7,7 +7,9 @@ build/
 # Source ZMK/Zephyr keo ve boi west update (KHONG commit - ~2.4GB)
 # Dấu / đứng đầu = chỉ match folder ở root repo (không đụng config/zephyr/)
 /zephyr/
-/zmk/
+# /zmk/ KHÔNG còn ignore: là repo con (west clone) → track dạng gitlink
+# (SHA c8157f01 của branch local/sofle-patches bên trong nó) + patch
+# content nằm tại patches/0001-*.patch (re-apply được sau west update)
 /modules/
 /boot/
 /tools/

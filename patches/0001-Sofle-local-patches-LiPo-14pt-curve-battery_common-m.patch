@@ -1,0 +1,429 @@
+From c8157f01c83899637bf6102d56f0012c1d5f6d29 Mon Sep 17 00:00:00 2001
+From: Your Name <you@example.com>
+Date: Sun, 23 Aug 2026 16:47:55 +0700
+Subject: [PATCH] Sofle local patches: LiPo 14pt curve (battery_common), mV
+ threshold 30mV + GAUGE_VOLTAGE fetch (battery.c), battery millivolts field
+ through events/transport, split BLE mV characteristic 0x07 (service/uuid;
+ central consumption disabled - GATT discovery failed on target)
+
+---
+ .../zmk/events/battery_state_changed.h        |   3 +
+ app/include/zmk/split/bluetooth/uuid.h        |   4 +
+ app/include/zmk/split/transport/types.h       |   2 +
+ .../drivers/sensor/battery/battery_common.c   |  30 ++++-
+ app/src/battery.c                             |  34 ++++-
+ app/src/split/bluetooth/central.c             | 120 +++++++++++++++++-
+ app/src/split/bluetooth/service.c             |  48 ++++++-
+ app/src/split/central.c                       |  11 +-
+ app/src/split/peripheral.c                    |   1 +
+ 9 files changed, 239 insertions(+), 14 deletions(-)
+
+diff --git a/app/include/zmk/events/battery_state_changed.h b/app/include/zmk/events/battery_state_changed.h
+index 157490d9..a7b9dc14 100644
+--- a/app/include/zmk/events/battery_state_changed.h
++++ b/app/include/zmk/events/battery_state_changed.h
+@@ -12,6 +12,8 @@
+ struct zmk_battery_state_changed {
+     // TODO: Other battery channels
+     uint8_t state_of_charge;
++    uint16_t millivolts; // PATCH 23/08: them mV (0 = khong co du lieu) —
++                         // widget OLED va split transport dung. Re-apply khi upgrade ZMK.
+ };
+ 
+ ZMK_EVENT_DECLARE(zmk_battery_state_changed);
+@@ -20,6 +22,7 @@ struct zmk_peripheral_battery_state_changed {
+     uint8_t source;
+     // TODO: Other battery channels
+     uint8_t state_of_charge;
++    uint16_t millivolts; // PATCH 23/08: mV cua pin nua phai (central nhan duoc)
+ };
+ 
+ ZMK_EVENT_DECLARE(zmk_peripheral_battery_state_changed);
+\ No newline at end of file
+diff --git a/app/include/zmk/split/bluetooth/uuid.h b/app/include/zmk/split/bluetooth/uuid.h
+index c9a63efa..897d2cab 100644
+--- a/app/include/zmk/split/bluetooth/uuid.h
++++ b/app/include/zmk/split/bluetooth/uuid.h
+@@ -20,3 +20,7 @@
+ #define ZMK_SPLIT_BT_UPDATE_HID_INDICATORS_UUID ZMK_BT_SPLIT_UUID(0x00000004)
+ #define ZMK_SPLIT_BT_SELECT_PHYS_LAYOUT_UUID ZMK_BT_SPLIT_UUID(0x00000005)
+ #define ZMK_SPLIT_BT_INPUT_EVENT_UUID ZMK_BT_SPLIT_UUID(0x00000006)
++// PATCH 23/08: characteristic mV pin peripheral (2 byte LE, notify) —
++// BAS chuan chi chuyen % (1 byte) nen can kenh rieng cho dien ap.
++// Re-apply khi upgrade ZMK.
++#define ZMK_SPLIT_BT_CHAR_BATTERY_MV_UUID ZMK_BT_SPLIT_UUID(0x00000007)
+diff --git a/app/include/zmk/split/transport/types.h b/app/include/zmk/split/transport/types.h
+index 1d6eb734..7f951c79 100644
+--- a/app/include/zmk/split/transport/types.h
++++ b/app/include/zmk/split/transport/types.h
+@@ -57,6 +57,8 @@ struct zmk_split_transport_peripheral_event {
+ 
+         struct {
+             uint8_t level;
++            uint16_t millivolts; // PATCH 23/08: them mV de man trai hien V cua
++                                 // phai o layer ADJUST. Re-apply neu upgrade ZMK.
+         } battery_event;
+     } data;
+ } __packed;
+diff --git a/app/module/drivers/sensor/battery/battery_common.c b/app/module/drivers/sensor/battery/battery_common.c
+index 9afe2d5b..73335c71 100644
+--- a/app/module/drivers/sensor/battery/battery_common.c
++++ b/app/module/drivers/sensor/battery/battery_common.c
+@@ -30,14 +30,30 @@ int battery_channel_get(const struct battery_value *value, enum sensor_channel c
+ }
+ 
+ uint8_t lithium_ion_mv_to_pct(int16_t bat_mv) {
+-    // Simple linear approximation of a battery based off adafruit's discharge graph:
+-    // https://learn.adafruit.com/li-ion-and-lipoly-batteries/voltages
+-
+-    if (bat_mv >= 4200) {
++    // PATCH LOCAL (repo Sofle-oled_wireless, 23/08/2026): thay bang piecewise
++    // curve LiPo 1S cho pin 1S 5000mAh (2 nua keyboard). Linear cu
++    // `mv*2/15-459` sai +-10-15% o giua dai (plateau 3.7-3.9V).
++    // ⚠️ FILE TRONG zmk/ TREE — mat neu `west update` doi revision, phai
++    // re-apply (ghi chu trong docs/LOCAL_BUILD_SETUP.md).
++    static const uint16_t pts_mv[] = {3450, 3500, 3550, 3600, 3650, 3700,
++                                      3750, 3800, 3850, 3900, 3950, 4000, 4100, 4200};
++    static const uint8_t pts_pct[] = {0,  2,  5,  9,  16, 25,
++                                      36, 48, 60, 68, 74, 80, 92, 100};
++    const int n = (int)(sizeof(pts_mv) / sizeof(pts_mv[0]));
++
++    if (bat_mv >= (int16_t)pts_mv[n - 1]) {
+         return 100;
+-    } else if (bat_mv <= 3450) {
++    }
++    if (bat_mv <= (int16_t)pts_mv[0]) {
+         return 0;
+     }
+-
+-    return bat_mv * 2 / 15 - 459;
++    for (int i = 1; i < n; i++) {
++        if (bat_mv < (int16_t)pts_mv[i]) {
++            const uint32_t span_mv = pts_mv[i] - pts_mv[i - 1];
++            const uint32_t span_pct = pts_pct[i] - pts_pct[i - 1];
++            const uint32_t off = (uint32_t)bat_mv - pts_mv[i - 1];
++            return (uint8_t)(pts_pct[i - 1] + (off * span_pct) / span_mv);
++        }
++    }
++    return 100;
+ }
+\ No newline at end of file
+diff --git a/app/src/battery.c b/app/src/battery.c
+index 811baf8e..40b1b58f 100644
+--- a/app/src/battery.c
++++ b/app/src/battery.c
+@@ -23,6 +23,8 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
+ #include <zmk/workqueue.h>
+ 
+ static uint8_t last_state_of_charge = 0;
++// PATCH 23/08: luu mV gan nhat de attach vao event (widget man trai + split)
++static uint16_t last_millivolts = 0;
+ 
+ uint8_t zmk_battery_state_of_charge(void) { return last_state_of_charge; }
+ 
+@@ -68,6 +70,16 @@ static int zmk_battery_update(const struct device *battery) {
+         LOG_DBG("Failed to get battery state of charge: %d", rc);
+         return rc;
+     }
++
++    // PATCH 23/08: lay them mV (bai driver vbatt doi thuoc ve GAUGE_VOLTAGE)
++    // de attach vao event cho widget OLED + split transport
++    {
++        struct sensor_value mv_val;
++        if (sensor_sample_fetch_chan(battery, SENSOR_CHAN_GAUGE_VOLTAGE) == 0 &&
++            sensor_channel_get(battery, SENSOR_CHAN_GAUGE_VOLTAGE, &mv_val) == 0) {
++            last_millivolts = (uint16_t)(mv_val.val1 * 1000 + mv_val.val2 / 1000);
++        }
++    }
+ #elif IS_ENABLED(CONFIG_ZMK_BATTERY_REPORTING_FETCH_MODE_LITHIUM_VOLTAGE)
+     rc = sensor_sample_fetch_chan(battery, SENSOR_CHAN_VOLTAGE);
+     if (rc != 0) {
+@@ -85,17 +97,33 @@ static int zmk_battery_update(const struct device *battery) {
+ 
+     uint16_t mv = voltage.val1 * 1000 + (voltage.val2 / 1000);
+     state_of_charge.val1 = lithium_ion_mv_to_pct(mv);
++    last_millivolts = mv;
+ 
+     LOG_DBG("State of change %d from %d mv", state_of_charge.val1, mv);
+ #else
+ #error "Not a supported reporting fetch mode"
+ #endif
+ 
+-    if (last_state_of_charge != state_of_charge.val1) {
++    // PATCH 23/08 (v2): event moi khi % doi HOAC mV doi >= 30mV —
++    // van de goc: event chi raise khi % doi, nen tren plateau LiPo
++    // (3.7-3.9V ~ chiem 70% dung luong) % khong doi hang gio →
++    // characteristic mV (listener tren event nay) khong bao gio notify,
++    // man hinh khong thay dien ap nua phai. 30mV = nguong tren noise
++    // ADC (~10-15mV) + voltage sag BLE TX, duoi do coi nhu khong doi
++    static uint16_t last_notified_mv = 0;
++    const bool soc_changed = (last_state_of_charge != state_of_charge.val1);
++    const int mv_diff = (int)last_millivolts - (int)last_notified_mv;
++    const bool mv_changed =
++        (last_millivolts != 0) && (mv_diff >= 30 || mv_diff <= -30);
++
++    if (soc_changed || mv_changed) {
+         last_state_of_charge = state_of_charge.val1;
++        if (mv_changed) {
++            last_notified_mv = last_millivolts;
++        }
+ 
+-        rc = raise_zmk_battery_state_changed(
+-            (struct zmk_battery_state_changed){.state_of_charge = last_state_of_charge});
++        rc = raise_zmk_battery_state_changed((struct zmk_battery_state_changed){
++            .state_of_charge = last_state_of_charge, .millivolts = last_millivolts});
+ 
+         if (rc != 0) {
+             LOG_ERR("Failed to raise battery state changed event: %d", rc);
+diff --git a/app/src/split/bluetooth/central.c b/app/src/split/bluetooth/central.c
+index 685deb51..a4a193a9 100644
+--- a/app/src/split/bluetooth/central.c
++++ b/app/src/split/bluetooth/central.c
+@@ -55,6 +55,10 @@ struct peripheral_slot {
+ #if IS_ENABLED(CONFIG_ZMK_SPLIT_BLE_CENTRAL_BATTERY_LEVEL_FETCHING)
+     struct bt_gatt_subscribe_params batt_lvl_subscribe_params;
+     struct bt_gatt_read_params batt_lvl_read_params;
++    // PATCH 23/08: subscribe them characteristic mV (UUID 0x07 cua split
++    // service) de hien V cua nua phai tren man trai. BAS chi co %.
++    struct bt_gatt_subscribe_params batt_mv_subscribe_params;
++    struct bt_gatt_read_params batt_mv_read_params;
+ #endif /* IS_ENABLED(CONFIG_ZMK_SPLIT_BLE_CENTRAL_BATTERY_LEVEL_FETCHING) */
+ #if IS_ENABLED(CONFIG_ZMK_SPLIT_PERIPHERAL_HID_INDICATORS)
+     uint16_t update_hid_indicators;
+@@ -393,6 +397,96 @@ static uint8_t split_central_notify_func(struct bt_conn *conn,
+ 
+ #if IS_ENABLED(CONFIG_ZMK_SPLIT_BLE_CENTRAL_BATTERY_LEVEL_FETCHING)
+ 
++// PATCH 23/08 (DISABLED v3): mV nua phai qua characteristic rieng — KHONG
++// hoat dong tren he thong (central khong discovery ra char moi sau khi
++// bond lai + settings reset). Nguyen nhan goc chua xac dinh duoc (nghi
++// ngo cache GATT / discovery race). Tam thoi bo, chi con % BAS.
++// Giu lai code de re-enable sau neu can: doi "if 0" thanh "if 1".
++#if 0
++// mV gan nhat nhan tu peripheral (characteristic UUID 0x07)
++// luu theo slot; raise lai event pin khi cap nhat de widget lay duoc.
++static uint16_t peripheral_mv[ZMK_SPLIT_BLE_PERIPHERAL_COUNT] = {0};
++
++static uint8_t split_central_battery_mv_notify_func(struct bt_conn *conn,
++                                                    struct bt_gatt_subscribe_params *params,
++                                                    const void *data, uint16_t length) {
++    struct peripheral_slot *slot = peripheral_slot_for_conn(conn);
++
++    if (!slot) {
++        LOG_ERR("No peripheral state found for connection");
++        return BT_GATT_ITER_CONTINUE;
++    }
++    if (!data) {
++        LOG_DBG("[BATT MV UNSUBSCRIBED]");
++        params->value_handle = 0U;
++        return BT_GATT_ITER_STOP;
++    }
++    if (length < 2) {
++        return BT_GATT_ITER_CONTINUE;
++    }
++
++    uint16_t mv = sys_get_le16((const uint8_t *)data);
++    uint8_t idx = peripheral_slot_index_for_conn(conn);
++
++    if (peripheral_mv[idx] != mv) {
++        peripheral_mv[idx] = mv;
++
++        struct peripheral_event_wrapper ev = {
++            .source = idx,
++            .event = {.type = ZMK_SPLIT_TRANSPORT_PERIPHERAL_EVENT_TYPE_BATTERY_EVENT,
++                      .data = {.battery_event = {
++                                   .level = 255, // 255 = khong doi %; widget
++                                                 // phan biet va giu % cu
++                                   .millivolts = mv,
++                               }}}};
++
++        k_msgq_put(&peripheral_event_msgq, &ev, K_NO_WAIT);
++        k_work_submit(&peripheral_event_work);
++    }
++
++    return BT_GATT_ITER_CONTINUE;
++}
++
++// PATCH 23/08 (v2): read mV ngay khi discovery xong (pattern trung BAS —
++// khong phai doi notify dau tien toi 60s moi thay V tren man). Publisher
++// (service.c) da cap nhat gia tri storage tu battery report dau tien.
++static uint8_t split_central_battery_mv_read_func(struct bt_conn *conn, uint8_t err,
++                                                  struct bt_gatt_read_params *params,
++                                                  const void *data, uint16_t length) {
++    if (err > 0) {
++        LOG_ERR("Error reading peripheral battery mV: %u", err);
++        return BT_GATT_ITER_STOP;
++    }
++    struct peripheral_slot *slot = peripheral_slot_for_conn(conn);
++    if (!slot) {
++        LOG_ERR("No peripheral state found for connection");
++        return BT_GATT_ITER_CONTINUE;
++    }
++    if (!data) {
++        LOG_DBG("[BATT MV READ COMPLETED]");
++        return BT_GATT_ITER_STOP;
++    }
++    if (length < 2) {
++        return BT_GATT_ITER_CONTINUE;
++    }
++    uint16_t mv = sys_get_le16((const uint8_t *)data);
++    uint8_t idx = peripheral_slot_index_for_conn(conn);
++    if (peripheral_mv[idx] != mv) {
++        peripheral_mv[idx] = mv;
++        struct peripheral_event_wrapper ev = {
++            .source = idx,
++            .event = {.type = ZMK_SPLIT_TRANSPORT_PERIPHERAL_EVENT_TYPE_BATTERY_EVENT,
++                      .data = {.battery_event = {
++                                   .level = 255, // mV-only: widget giu % cu
++                                   .millivolts = mv,
++                               }}}};
++        k_msgq_put(&peripheral_event_msgq, &ev, K_NO_WAIT);
++        k_work_submit(&peripheral_event_work);
++    }
++    return BT_GATT_ITER_CONTINUE;
++}
++#endif // if 0 — het block mV disabled
++
+ static uint8_t split_central_battery_level_notify_func(struct bt_conn *conn,
+                                                        struct bt_gatt_subscribe_params *params,
+                                                        const void *data, uint16_t length) {
+@@ -636,8 +730,32 @@ static uint8_t split_central_chrc_discovery_func(struct bt_conn *conn,
+             slot->batt_lvl_read_params.single.handle = bt_gatt_attr_value_handle(attr);
+             slot->batt_lvl_read_params.single.offset = 0;
+             bt_gatt_read(conn, &slot->batt_lvl_read_params);
+-#endif /* IS_ENABLED(CONFIG_ZMK_SPLIT_BLE_CENTRAL_BATTERY_LEVEL_FETCHING) */
+         }
++        // PATCH 23/08 (DISABLED v3): else-if subscribe char mV da BO —
++        // char khong duoc discovery tren he thong that (nguyen nhan chua
++        // ro, da thu settings reset + bond lai). Re-enable: xem block
++        // "if 0" phia tren + tra lai else-if nay tu git history.
++        #if 0
++        else if (!bt_uuid_cmp(((struct bt_gatt_chrc *)attr->user_data)->uuid,
++                              BT_UUID_DECLARE_128(ZMK_SPLIT_BT_CHAR_BATTERY_MV_UUID))) {
++            LOG_DBG("Found battery mV characteristics");
++            slot->batt_mv_subscribe_params.disc_params = &slot->sub_discover_params;
++            slot->batt_mv_subscribe_params.end_handle = slot->discover_params.end_handle;
++            slot->batt_mv_subscribe_params.value_handle = bt_gatt_attr_value_handle(attr);
++            slot->batt_mv_subscribe_params.notify = split_central_battery_mv_notify_func;
++            slot->batt_mv_subscribe_params.value = BT_GATT_CCC_NOTIFY;
++            split_central_subscribe(conn, &slot->batt_mv_subscribe_params);
++
++            // Read gia tri hien tai NGAY (giong BAS) — mV khong phai cho
++            // notify dau tien toi 60s
++            slot->batt_mv_read_params.func = split_central_battery_mv_read_func;
++            slot->batt_mv_read_params.handle_count = 1;
++            slot->batt_mv_read_params.single.handle = bt_gatt_attr_value_handle(attr);
++            slot->batt_mv_read_params.single.offset = 0;
++            bt_gatt_read(conn, &slot->batt_mv_read_params);
++        }
++        #endif
++#endif /* ZMK_SPLIT_BLE_CENTRAL_BATTERY_LEVEL_FETCHING */
+         break;
+     }
+     case BT_GATT_DISCOVER_STD_CHAR_DESC:
+diff --git a/app/src/split/bluetooth/service.c b/app/src/split/bluetooth/service.c
+index 5bbed137..95bd2519 100644
+--- a/app/src/split/bluetooth/service.c
++++ b/app/src/split/bluetooth/service.c
+@@ -35,6 +35,43 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
+ #include <zmk/events/sensor_event.h>
+ #include <zmk/sensors.h>
+ 
++#if IS_ENABLED(CONFIG_ZMK_BATTERY_REPORTING)
++// PATCH 23/08: characteristic mV pin — storage + read + ccc + notify hook.
++#include <zmk/events/battery_state_changed.h>
++static uint16_t battery_mv_value = 0;
++static ssize_t split_svc_read_batt_mv(struct bt_conn *conn, const struct bt_gatt_attr *attrs,
++                                      void *buf, uint16_t len, uint16_t offset) {
++    uint16_t le = sys_cpu_to_le16(battery_mv_value);
++    return bt_gatt_attr_read(conn, attrs, buf, len, offset, &le, sizeof(le));
++}
++
++static void split_svc_batt_mv_ccc(const struct bt_gatt_attr *attr, uint16_t value) {
++    LOG_DBG("batt_mv ccc value %d", value);
++}
++
++// Listener: khi battery_state_changed (moi 60s theo REPORT_INTERVAL) —
++// cap nhat storage va notify subscriber neu co
++static int split_svc_batt_mv_listener(const zmk_event_t *eh) {
++    const struct zmk_battery_state_changed *ev = as_zmk_battery_state_changed(eh);
++    if (ev == NULL) {
++        return ZMK_EV_EVENT_BUBBLE;
++    }
++    if (ev->millivolts != 0 && ev->millivolts != battery_mv_value) {
++        battery_mv_value = ev->millivolts;
++        uint16_t le = sys_cpu_to_le16(battery_mv_value);
++        // Notify theo UUID (conn=NULL → tat ca subscriber). attr truyen NULL —
++        // bt_gatt_notify_uuid signature (conn, uuid, attr, data, len).
++        static const struct bt_uuid_128 batt_mv_uuid =
++            BT_UUID_INIT_128(ZMK_SPLIT_BT_CHAR_BATTERY_MV_UUID);
++        bt_gatt_notify_uuid(NULL, (const struct bt_uuid *)&batt_mv_uuid, NULL, &le, sizeof(le));
++    }
++    return ZMK_EV_EVENT_BUBBLE;
++}
++
++ZMK_LISTENER(split_svc_batt_mv, split_svc_batt_mv_listener);
++ZMK_SUBSCRIPTION(split_svc_batt_mv, zmk_battery_state_changed);
++#endif
++
+ #if ZMK_KEYMAP_HAS_SENSORS
+ static struct sensor_event last_sensor_event;
+ 
+@@ -205,7 +242,16 @@ BT_GATT_SERVICE_DEFINE(
+                            BT_GATT_CHRC_WRITE | BT_GATT_CHRC_READ,
+                            BT_GATT_PERM_WRITE_ENCRYPT | BT_GATT_PERM_READ_ENCRYPT,
+                            split_svc_get_selected_phys_layout, split_svc_select_phys_layout,
+-                           NULL), );
++                           NULL),
++#if IS_ENABLED(CONFIG_ZMK_BATTERY_REPORTING)
++    // PATCH 23/08: characteristic mV pin (2 byte LE) — central subscribe de
++    // hien V cua nua phai tren man trai (layer ADJUST). BAS chuan chi co %.
++    BT_GATT_CHARACTERISTIC(BT_UUID_DECLARE_128(ZMK_SPLIT_BT_CHAR_BATTERY_MV_UUID),
++                           BT_GATT_CHRC_READ | BT_GATT_CHRC_NOTIFY, BT_GATT_PERM_READ_ENCRYPT,
++                           split_svc_read_batt_mv, NULL, &battery_mv_value),
++    BT_GATT_CCC(split_svc_batt_mv_ccc, BT_GATT_PERM_READ_ENCRYPT | BT_GATT_PERM_WRITE_ENCRYPT),
++#endif
++);
+ 
+ K_THREAD_STACK_DEFINE(service_q_stack, CONFIG_ZMK_SPLIT_BLE_PERIPHERAL_STACK_SIZE);
+ 
+diff --git a/app/src/split/central.c b/app/src/split/central.c
+index e2b80643..95c8d776 100644
+--- a/app/src/split/central.c
++++ b/app/src/split/central.c
+@@ -55,11 +55,18 @@ int zmk_split_transport_central_peripheral_event_handler(
+ #endif // IS_ENABLED(CONFIG_ZMK_POINTING)
+ #if IS_ENABLED(CONFIG_ZMK_SPLIT_BLE_CENTRAL_BATTERY_LEVEL_FETCHING)
+     case ZMK_SPLIT_TRANSPORT_PERIPHERAL_EVENT_TYPE_BATTERY_EVENT: {
++        // PATCH 23/08: level=255 co nghia "chi cap nhat mV" (notify tu
++        // characteristic mV rieng) → giu % cu, khong raise event % moi
++        static uint8_t peripheral_soc[ZMK_SPLIT_CENTRAL_PERIPHERAL_COUNT] = {0};
++        if (ev.data.battery_event.level != 255) {
++            peripheral_soc[source] = ev.data.battery_event.level;
++            peripheral_battery_levels[source] = ev.data.battery_event.level;
++        }
+         struct zmk_peripheral_battery_state_changed battery_ev = {
+             .source = source,
+-            .state_of_charge = ev.data.battery_event.level,
++            .state_of_charge = peripheral_soc[source],
++            .millivolts = ev.data.battery_event.millivolts,
+         };
+-        peripheral_battery_levels[source] = ev.data.battery_event.level;
+         return raise_zmk_peripheral_battery_state_changed(battery_ev);
+     }
+ #endif
+diff --git a/app/src/split/peripheral.c b/app/src/split/peripheral.c
+index 4157ffa2..c85a1e65 100644
+--- a/app/src/split/peripheral.c
++++ b/app/src/split/peripheral.c
+@@ -169,6 +169,7 @@ int split_peripheral_listener(const zmk_event_t *eh) {
+             .type = ZMK_SPLIT_TRANSPORT_PERIPHERAL_EVENT_TYPE_BATTERY_EVENT,
+             .data = {.battery_event = {
+                          .level = battery_ev->state_of_charge,
++                         .millivolts = battery_ev->millivolts, // PATCH 23/08
+                      }}};
+ 
+         zmk_split_peripheral_report_event(&ev);
+-- 
+2.45.2.windows.1
+
