@@ -81,8 +81,17 @@ case "$TARGET" in
       "-DZMK_EXTRA_MODULES=$ZMK_CONFIG_DIR" \
       "-DEXTRA_DTC_OVERLAY_FILE=$ZMK_CONFIG_DIR/oled_128x64_left.overlay" \
       -DCONFIG_ZMK_DISPLAY_ROTATE_90_RIGHT=y -DCONFIG_ZMK_DISPLAY_ROTATE_DIAG=y
-    ;;
-  right)
+    ;;  debug-log)
+    # BLE-split debug: log chi tiet split + BLE + keys. Build cho nua trai
+    # (central). Xem log qua RTT (J-Link) hoac them snippet cdc_acm_console
+    # de xuất log qua USB CDC.
+    rm -rf "build/sofle_debug"
+    "$VENV_BIN/west.exe" build -s zmk/app -b nice_nano_v2 -d "build/sofle_debug" \
+      -- "-DZMK_CONFIG=$ZMK_CONFIG_DIR" -DSHIELD=sofle_left \
+      "-DZMK_EXTRA_MODULES=$ZMK_CONFIG_DIR" \
+      "-DEXTRA_DTC_OVERLAY_FILE=$ZMK_CONFIG_DIR/oled_128x64_left.overlay" \
+      -DCONFIG_ZMK_LOG_LEVEL_DBG=y
+    ;;  right)
     build sofle_right -DSHIELD=sofle_right "-DZMK_EXTRA_MODULES=$ZMK_CONFIG_DIR"
     ;;
   reset)

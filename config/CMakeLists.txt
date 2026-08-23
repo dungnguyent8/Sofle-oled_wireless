@@ -20,8 +20,11 @@ if(CONFIG_ZMK_DISPLAY AND CONFIG_ZMK_DISPLAY_STATUS_SCREEN_CUSTOM)
   # trong keys.h phá LV_CONF_PATH "E:/..." trên Windows).
 
   if(CONFIG_ZMK_SPLIT_ROLE_CENTRAL)
-    # Màn trái: modifiers + HID indicators (không cần LV_USE_IMG)
+    # Màn trái: modifiers + HID indicators + battery icon+% + bongo cat
+    # (bongo cat thay waveform WPM — config LV_USE_IMG da bat trong sofle_left.conf)
     target_sources(app PRIVATE widgets/modifiers.c widgets/hid_indicators.c)
+    target_sources(app PRIVATE widgets/battery_full.c widgets/bongo_cat.c)
+    target_sources(app PRIVATE widgets/bongo_cat_images.c)
     target_sources(app PRIVATE status_screen_left.c)
   else()
     # Màn phải: bongo cat animimg (cần CONFIG_LV_USE_IMG + LV_USE_ANIMIMG)

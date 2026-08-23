@@ -25,9 +25,10 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 #define LED_CLCK 0x02
 #define LED_SLCK 0x04
 
-#define SYMBOL_NLCK LV_SYMBOL_OK      // hien con vech khi Num lock
-#define SYMBOL_CLCK LV_SYMBOL_CLOSE   // X khi Caps lock - de nhan nhat
-#define SYMBOL_SLCK LV_SYMBOL_UP      // mui ten khi Scroll lock
+// Chi hien CAPS LOCK (yeu cau user: NUM/SCRL khong can tren OLED).
+// Icon EYE_OPEN = "dang bat/duoc thay" — ro nghia hon X/vech truoc day.
+// NUM va SCRL giu lai logic nhung render chuoi rong.
+#define ICON_CLCK LV_SYMBOL_EYE_OPEN
 
 struct hid_indicators_state {
     uint8_t hid_indicators;
@@ -36,19 +37,8 @@ struct hid_indicators_state {
 static sys_slist_t widgets = SYS_SLIST_STATIC_INIT(&widgets);
 
 static void set_hid_indicators(lv_obj_t *label, struct hid_indicators_state state) {
-    char text[13] = {};
-
-    if (state.hid_indicators & LED_CLCK) {
-        strcat(text, SYMBOL_CLCK " ");
-    }
-    if (state.hid_indicators & LED_NLCK) {
-        strcat(text, SYMBOL_NLCK " ");
-    }
-    if (state.hid_indicators & LED_SLCK) {
-        strcat(text, SYMBOL_SLCK);
-    }
-
-    lv_label_set_text(label, text);
+    // Chi CAPS: hien icon khi bat, rong khi tat
+    lv_label_set_text(label, (state.hid_indicators & LED_CLCK) ? ICON_CLCK : "");
 }
 
 void hid_indicators_update_cb(struct hid_indicators_state state) {

@@ -275,7 +275,7 @@ Nếu bàn của bạn còn màn gốc 0.96" 128x32, edit 3 chỗ sau rồi buil
 Không cần xóa file `config/oled_128x64_left.overlay` (flag không truyền thì file bị bỏ qua,
 không tự nạp). Không đụng `zmk/`, `sofle.conf` hay bất kỳ file nào khác.
 
-### Nếu màn SH1106 vẫn lệch ~2 pixel ngang — ĐÃ TÉ, ĐÃ FIX (verify 23/08/2026)
+### Nếu màn SH1106 vẫn lệch ~2 pixel nzzgang — ĐÃ TÉ, ĐÃ FIX (verify 23/08/2026)
 
 **SH1106 có GRAM 132 cột nhưng panel chỉ hiển thị 128.** Panel 1.3" của repo này map
 window GRAM[2..129], trong khi driver mặc định ghi cols 0..127:

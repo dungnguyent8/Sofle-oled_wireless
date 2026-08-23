@@ -27,20 +27,21 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 static sys_slist_t widgets = SYS_SLIST_STATIC_INIT(&widgets);
 
 static void set_modifiers(lv_obj_t *label, zmk_mod_flags_t mods) {
-    // Dang cho: Sh=shift Ct=ctrl Al=alt Gi=gui (Windows/super key)
-    char text[40] = {};
+    // 1 ky tu, khong khoang trang: "S+C+A+G" (~45px font 12) — vừa 1 hàng
+    // man doc 64px (yeu cau user 23/08: hien du 4 modifier cung 1 hang)
+    char text[8] = {};
 
     if (mods & (MOD_LSFT | MOD_RSFT)) {
-        strcpy(text, "Sh");
+        strcpy(text, "S");
     }
     if (mods & (MOD_LCTL | MOD_RCTL)) {
-        strcat(text, (text[0] != '\0') ? " + Ct" : "Ct");
+        strcat(text, (text[0] != '\0') ? "+C" : "C");
     }
     if (mods & (MOD_LALT | MOD_RALT)) {
-        strcat(text, (text[0] != '\0') ? " + Al" : "Al");
+        strcat(text, (text[0] != '\0') ? "+A" : "A");
     }
     if (mods & (MOD_LGUI | MOD_RGUI)) {
-        strcat(text, (text[0] != '\0') ? " + Gi" : "Gi");
+        strcat(text, (text[0] != '\0') ? "+G" : "G");
     }
 
     lv_label_set_text(label, text);
@@ -59,14 +60,6 @@ int zmk_widget_modifiers_init(struct zmk_widget_modifiers *widget, lv_obj_t *par
     widget->obj = lv_label_create(parent);
     lv_obj_set_style_text_font(widget->obj, lv_theme_get_font_small(parent), LV_PART_MAIN);
     lv_label_set_text(widget->obj, "");
-
-#if IS_ENABLED(CONFIG_ZMK_DISPLAY_ROTATE_90_RIGHT)
-    // Man doc 64px: text "Sh + Ct + Al + Gi" (~100px) se bi clip 2 ben —
-    // gioi han rong 60 de wrap xuong dong + canh giua text
-    lv_obj_set_width(widget->obj, 60);
-    lv_label_set_long_mode(widget->obj, LV_LABEL_LONG_WRAP);
-    lv_obj_set_style_text_align(widget->obj, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-#endif
 
     sys_slist_append(&widgets, &widget->node);
 
