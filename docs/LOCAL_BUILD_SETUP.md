@@ -6,6 +6,41 @@
 > Làm theo đúng từng bước — đã verify thành công trên Windows 10/11 + Git Bash.
 > Tổng thời gian ~30-45 phút (tùy tốc độ mạng khi tải SDK + source).
 
+## ⚠️ Repo này KHÔNG tự chứa mọi thứ cần để build — clone mới phải đọc trước
+
+Repo chỉ chứa **config + code hiển thị** (~vài MB). Mọi thứ dưới đây phải tự chuẩn bị
+(không commit được vì quá lớn hoặc thuộc máy cụ thể):
+
+| Thứ | Vì sao không có trong repo | Lấy ở đâu |
+|---|---|---|
+| **Source ZMK/Zephyr/modules** (~2.5GB) | west kéo về; `.gitignore` chặn `/zephyr/`, `/modules/`... | Bước 5 (`west init -l config && west update`) |
+| **Patch 9 file trong cây ZMK** ⚠️ QUAN TRỌNG | Patch sửa thẳng source trong `zmk/` (curve pin LiPo, mV...) — mất khi `west update` | ✅ Đã backup: `patches/0001-*.patch` TRONG repo — xem "Khôi phục patch" dưới |
+| **Toolchain** (venv Python + Zephyr SDK 0.16.3 + dtc) | ~3GB, cài ngoài repo tại `E:\project\keyboard\zmk-build-tools\` | Bước 2-4 |
+| **Thư mục `zmk/` gitlink rỗng** | Repo track `zmk` dạng SHA pointer (mode 160000) — clone về là thư mục RỖNG, không phải submodule thật | Bỏ qua, west update tạo đúng; hoặc `git -C zmk checkout c8157f01` nếu đã có source |
+
+### Khôi phục patch ZMK sau `west update` (BẮT BUỘC nếu không curve pin sẽ sai)
+
+`west update` reset source `zmk/` về bản manifest gốc → mất 9 file patch (curve LiPo, mV threshold,
+event millivolts...). Repo đã backup dạng git-am series:
+
+```bash
+# Cách 1 — checkout đúng commit đã patch (nhanh, an toàn):
+git -C zmk checkout local/sofle-patches
+# (nếu branch mất: git -C zmk checkout c8157f01)
+
+# Cách 2 — apply patch lên bản ZMK mới hơn (khi nâng version, có thể conflict):
+git -C zmk am ../patches/0001-*.patch
+```
+
+Nếu build mà % pin hiển thị "nhảy cấp" lớn giữa 3.7-3.9V hoặc widget trái báo mV lạ —
+99% là chưa khôi phục patch.
+
+### Hardware riêng của bản mod này (khác stock Sofle)
+
+- **OLED trái 1.3" 128x64 SH1106** (stock là 0.96" 128x32 SSD1306) — xoay dọc 90°
+- **OLED phải giữ stock** 128x32 SSD1306
+- Pin LiPo 1S mỗi nửa (đọc qua VDDH/5) — curve 14 điểm trong patch + widget
+
 ## Tổng quan cần cài gì
 
 | Thành phần | Phiên bản đã verify | Ghi chú |
@@ -112,6 +147,10 @@ west init -l config
 # trusted-firmware-a, espressif 1.5GB, các hal hãng khác...) — đừng xóa blocklist
 # khỏi config/west.yml nếu không muốn tải thừa ~4GB
 west update
+
+# ⚠️ west update XÓA patch 9 file trong zmk/ (curve pin, mV...) —
+# chạy thêm lệnh này SAU MỖI lần west update:
+git -C zmk checkout local/sofle-patches   # hoặc: git -C zmk am ../patches/0001-*.patch
 ```
 
 Lần đầu tải ~2.5GB (zephyr 517M + lvgl 407M + picolibc 140M + hal/nordic...). Mạng VN về
