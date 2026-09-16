@@ -19,3 +19,13 @@ config ZMK_DISPLAY_ROTATE_DIAG
 	  Man hinh chi ve: 4 o vuong 4x4 o 4 goc + label "TEST 123" giua.
 	  Dung de cach ly loi artifact cham tran: neu pattern sach ma van co
 	  cham → loi tai tang driver/GRAM; neu cham mat → loi widget render.
+config ZMK_RGB_UNDERGLOW_PERLED_HUE_STEP
+        int "Per-LED hue offset step (degrees) for underglow gradient"
+        default 18
+        range 0 90
+        depends on ZMK_RGB_UNDERGLOW
+        help
+          Moi LED trong chain nhan hue + (step * led_index) → gradient lech
+          mau dan trong cung tone layer. 0 = tat (tro ve stock: ca chain
+          1 mau chung). Patch engine tai zmk/app/src/rgb_underglow.c —
+          mat khi west update (xem patches/ de re-apply).

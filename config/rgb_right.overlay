@@ -1,0 +1,63 @@
+/*
+ * LED per-key nua PHAI (16/09): chain 5x WS2812 noi vao D10 (P0.06).
+ * Template theo corne/boards/nice_nano_v2.overlay cua ZMK 0.3.
+ *
+ * ⚠️ NEU DOI PIN: doi 2 cho NRF_PSEL(SPIM_MOSI, 0, X) — bang pin
+ * pro_micro (arduino_pro_micro_pins.dtsi): D1=P0.06? khong — tham chieu:
+ *   pro_micro 6 (D6)  = P1.00
+ *   D10               = P0.06
+ * Chi chuan cua nice_nano_v2 dung SPI3 MOSI tren P0.06 (D10).
+ *
+ * CHAIN 5 LED dau tien ben phai (index 0-4): hieu ung underglow
+ * (ZMK 0.3 chua co per-key map — toan chain 1 mau chung, KHONG tach
+ * tung phim duoc; LED se theo hieu ung RGB_TOG/EFF/HUE/SAT/BRI).
+ *
+ * SPDX-License-Identifier: MIT
+ */
+
+#include <dt-bindings/led/led.h>
+
+&pinctrl {
+    spi3_default: spi3_default {
+        group1 {
+            psels = <NRF_PSEL(SPIM_MOSI, 0, 6)>;
+        };
+    };
+
+    spi3_sleep: spi3_sleep {
+        group1 {
+            psels = <NRF_PSEL(SPIM_MOSI, 0, 6)>;
+            low-power-enable;
+        };
+    };
+};
+
+&spi3 {
+    compatible = "nordic,nrf-spim";
+    status = "okay";
+
+    pinctrl-0 = <&spi3_default>;
+    pinctrl-1 = <&spi3_sleep>;
+    pinctrl-names = "default", "sleep";
+
+    led_strip: ws2812@0 {
+        compatible = "worldsemi,ws2812-spi";
+
+        /* SPI */
+        reg = <0>; /* ignored, but necessary for SPI bindings */
+        spi-max-frequency = <4000000>;
+
+        /* WS2812 */
+        chain-length = <5>; /* 5 LED per-key vua noi */
+        spi-one-frame = <0x70>;
+        spi-zero-frame = <0x40>;
+
+        color-mapping = <LED_COLOR_ID_GREEN LED_COLOR_ID_RED LED_COLOR_ID_BLUE>;
+    };
+};
+
+/ {
+    chosen {
+        zmk,underglow = &led_strip;
+    };
+};

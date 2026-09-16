@@ -23,5 +23,6 @@ include:
     cmake-args: -DCONFIG_ZMK_STUDIO=y -DEXTRA_DTC_OVERLAY_FILE=config/oled_128x64_left.overlay
   - board: nice_nano_v2
     shield: sofle_right
+    cmake-args: -DEXTRA_DTC_OVERLAY_FILE=config/rgb_right.overlay
   - board: nice_nano_v2
     shield: settings_reset

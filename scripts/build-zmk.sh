@@ -92,7 +92,8 @@ case "$TARGET" in
       "-DEXTRA_DTC_OVERLAY_FILE=$ZMK_CONFIG_DIR/oled_128x64_left.overlay" \
       -DCONFIG_ZMK_LOG_LEVEL_DBG=y
     ;;  right)
-    build sofle_right -DSHIELD=sofle_right "-DZMK_EXTRA_MODULES=$ZMK_CONFIG_DIR"
+    build sofle_right -DSHIELD=sofle_right "-DZMK_EXTRA_MODULES=$ZMK_CONFIG_DIR" \
+      "-DEXTRA_DTC_OVERLAY_FILE=$ZMK_CONFIG_DIR/rgb_right.overlay"
     ;;
   reset)
     build settings_reset -DSHIELD=settings_reset
@@ -101,7 +102,8 @@ case "$TARGET" in
     build sofle_left -S:studio-rpc-usb-uart -DSHIELD=sofle_left -DCONFIG_ZMK_STUDIO=y \
       "-DZMK_EXTRA_MODULES=$ZMK_CONFIG_DIR" \
       "-DEXTRA_DTC_OVERLAY_FILE=$ZMK_CONFIG_DIR/oled_128x64_left.overlay"
-    build sofle_right -DSHIELD=sofle_right "-DZMK_EXTRA_MODULES=$ZMK_CONFIG_DIR"
+    build sofle_right -DSHIELD=sofle_right "-DZMK_EXTRA_MODULES=$ZMK_CONFIG_DIR" \
+      "-DEXTRA_DTC_OVERLAY_FILE=$ZMK_CONFIG_DIR/rgb_right.overlay"
     build settings_reset -DSHIELD=settings_reset
     ;;
 esac

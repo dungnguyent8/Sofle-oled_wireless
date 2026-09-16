@@ -372,12 +372,44 @@ Panel trái được **gắn xoay dọc**: UI logic là màn dọc **64×128**, 
 
 ## Trang info layer ADJUST (giữ raise+lower) — màn trái
 
-> Thêm 23/08/2026 (sửa cuối 23/08 cùng ngày). Khi layer ADJUST active, màn trái
+> Thêm 23/08/2026 (sửa cuối 16/09). Khi layer ADJUST active, màn trái
 > đổi thành trang **thông số kết nối/pin**; nhả phím thì về layout thường.
 > Đã từng có CPU%/RAM% MCU — đã BỎ theo yêu cầu (số liệu MCU vô nghĩa cho user,
 > và đo đúng bị chặn: `lv_mem_monitor()` không hoạt động vì Zephyr LVGL dùng
   `LV_MEM_CUSTOM=y` + heap static không expose; CPU% thì `k_thread_foreach`
   cần `CONFIG_THREAD_MONITOR`... chi tiết xem git history nếu cần lại).
+
+### Cách VÀO adjust + bảng phím (16/09)
+
+**Cách vào**: GIỮ phím ngoài cùng phải (vị trí `mo 3`) — thả là ra.
+**Cách thoát**: phím thumb key1 (`to 0`) hoặc nhả phím giữ.
+
+**Nửa TRÁI** (Bluetooth + chất liệu màu LED — vị trí phím đúng chữ keymap):
+
+| Phím | Chức năng | Phím | Chức năng |
+|---|---|---|---|
+| `1` | BT_CLR — xóa pairing | `Q` | RGB_OFF — tắt LED (an toàn) |
+| `2`-`6` | BT_SEL 0-4 — profile BT | `W`/`E` | RGB_HUD/HUI — dịch màu ←/→ |
+| | | `R`/`T` | RGB_SAD/SAI — độ đậm ↓/↑ |
+| | | `Y` | RGB_EFF — đổi hiệu ứng |
+| | | `A` | RGB_ON — bật LED |
+| | | `S` | RGB_BRI — sáng hơn |
+
+⚠️ ĐÃ BỎ `&ext_power EP_TOG` (16/09): OLED + LED cùng rail EXT — cắt nguồn
+giữa chừng = OLED mất init → màn đen ngấm tới restart (đã té 2 lần).
+
+**Nửa PHẢI** (công tắc + tốc độ):
+
+| Phím | Chức năng |
+|---|---|
+| giữa 2 nửa (hàng 4) | RGB_TOG — bật/tắt LED |
+| thumb key1 | thoát adjust (`to 0`) |
+| thumb BSPC | RGB_SPD — chậm hơn |
+| thumb DEL | RGB_SPI — nhanh hơn |
+| thumb ngoài cùng | RGB_EFR — đảo chiều hiệu ứng + (đang giữ = adjust) |
+
+Mẹo nhớ: **trái = chất liệu** (màu/đậm/sáng/hiệu ứng), **phải = công tắc + tốc độ**.
+LED đổi tông màu theo layer (xem mục LED riêng) — vào adjust là tông đỏ.
 
 ### Layout 2 chế độ
 

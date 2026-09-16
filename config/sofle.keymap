@@ -135,19 +135,34 @@
         adjust_layer {
             // ----------------------------------------------------------------------------------------------------------------------------
             // | BTCLR  |  BT1    |  BT2    |   BT3   |   BT4   |   BT5   |                  |      |      |       |      |       |       |
-            // | EXTPWR | RGB_HUD | RGB_HUI | RGB_SAD | RGB_SAI | RGB_EFF |                  |      |      |       |      |       |       |
-            // |        | RGB_BRD | RGB_BRI |         |         |         |                  |      |      |       |      |       |       |
+            // | RGB_OFF | RGB_HUD | RGB_HUI | RGB_SAD | RGB_SAI | RGB_EFF |                  |      |      |       |      |       |       |
+            // | RGB_ON  | RGB_BRD | RGB_BRI |         |         |         |                  |      |      |       |      |       |       |
             // |        |         |         |         |         |         | RGB_TOG | |      |      |      |       |      |       |       |
-            //                    |         |         |         |         |         | |      |      |      |       |      |
+            //                    |         |         |         |         |         | |      |      | SPD  |  SPI | EFR  |  (phải hàng thumb: to0 + 3 phím tốc độ LED) |
+            // (16/09 DA BO &ext_power EP_TOG: OLED + LED cung rail EXT — cat nguon
+            //  giua chung = OLED mat init, man den ngam toi restart. Thay bang
+            //  RGB_OFF/RGB_ON an toan — chi tac dong den LED.)
 
             label = "adjust";
             bindings = <
-&bt BT_CLR         &bt BT_SEL 0     &bt BT_SEL 1     &bt BT_SEL 2     &bt BT_SEL 3     &bt BT_SEL 4                               &kp W  &none  &none  &none  &none  &none
-&ext_power EP_TOG  &rgb_ug RGB_HUD  &rgb_ug RGB_HUI  &rgb_ug RGB_SAD  &rgb_ug RGB_SAI  &rgb_ug RGB_EFF                            &none  &none  &none  &none  &none  &none
-&none              &rgb_ug RGB_BRD  &rgb_ug RGB_BRI  &none            &none            &none                                      &none  &none  &none  &none  &none  &none
-&none              &none            &none            &none            &none            &none            &rgb_ug RGB_TOG    &none  &none  &none  &none  &none  &none  &none
-                                    &none            &none            &none            &none            &none              &to 0  &none  &none  &none  &to 0
+&bt BT_CLR         &bt BT_SEL 0     &bt BT_SEL 1     &bt BT_SEL 2     &bt BT_SEL 3     &bt BT_SEL 4                               &kp W  &none  &none  &none  &none  &rgb_ug RGB_LED_SEL(4)
+&rgb_ug RGB_OFF    &rgb_ug RGB_HUD  &rgb_ug RGB_HUI  &rgb_ug RGB_SAD  &rgb_ug RGB_SAI  &rgb_ug RGB_EFF                            &none  &none  &none  &none  &none  &rgb_ug RGB_LED_SEL(3)
+&rgb_ug RGB_ON     &rgb_ug RGB_BRD  &rgb_ug RGB_BRI  &none            &none            &none                                      &none  &none  &none  &none  &none  &rgb_ug RGB_LED_SEL(2)
+&none              &none            &none            &none            &none            &none            &rgb_ug RGB_TOG    &none  &none  &none  &none  &rgb_ug RGB_EFR  &none  &rgb_ug RGB_LED_SEL(1)
+                                    &none            &none            &none            &none            &none              &to 0  &rgb_ug RGB_SPD  &rgb_ug RGB_SPI  &none  &rgb_ug RGB_LED_SEL(0)
             >;
+
+            // ==== PER-LED SELECT (16/09 v4) — bấm phím có LED để chọn LED đó ====
+            // Vị trí LED: LED0 = THUMB ngoài cùng phải (hàng dưới cùng, màu
+            // theo layer); LED1-4 = cột NGOÀI CÙNG phải 4 hàng chính, đánh
+            // số TỪ DƯỚI LÊN (hàng 4/⇧ = LED1, hàng 3/' = LED2, hàng 4/- =
+            // LED3, hàng 1/= = LED4).
+            // Trong adjust, cột ngoài cùng phải = chính các phím đó:
+            //   thumb ngoài cùng = LED0 | hàng ⇧\ = LED1 | hàng /' = LED2
+            //   hàng ;-= LED3   | hàng P== = LED4
+            // Sau khi chọn: W/E hue, R/T sat, A/S brightness — chỉ LED đó.
+            // Selection TẠM (restart về LED0); màu LED1-4 lưu flash.
+            // EFR dời vào hàng 4 cột FSLH (kề LED_SEL(1)).
         };
     };
 };
