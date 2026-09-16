@@ -1,7 +1,7 @@
 From c8157f01c83899637bf6102d56f0012c1d5f6d29 Mon Sep 17 00:00:00 2001
 From: Your Name <you@example.com>
 Date: Sun, 23 Aug 2026 16:47:55 +0700
-Subject: [PATCH] Sofle local patches: LiPo 14pt curve (battery_common), mV
+Subject: [PATCH 1/2] Sofle local patches: LiPo 14pt curve (battery_common), mV
  threshold 30mV + GAUGE_VOLTAGE fetch (battery.c), battery millivolts field
  through events/transport, split BLE mV characteristic 0x07 (service/uuid;
  central consumption disabled - GATT discovery failed on target)

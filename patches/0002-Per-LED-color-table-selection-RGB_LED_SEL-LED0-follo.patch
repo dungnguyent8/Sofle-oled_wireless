@@ -1,0 +1,337 @@
+From c96fecd3265d1ac3519838929375489af73cf141 Mon Sep 17 00:00:00 2001
+From: Your Name <you@example.com>
+Date: Thu, 17 Sep 2026 00:35:11 +0700
+Subject: [PATCH 2/2] Per-LED color table + selection (RGB_LED_SEL): LED0
+ follows layer hue via listener, LED1-4 independent colors w/ settings
+ persistence (rgb/underglow/perled), calc_* respect selected LED as conversion
+ base (behavior converts relative->absolute centrally), calc_brt
+ auto-saturates when brightening from white (s=0 hue invisible)
+
+---
+ app/include/dt-bindings/zmk/rgb.h          |   3 +
+ app/include/zmk/rgb_underglow.h            |   1 +
+ app/src/behaviors/behavior_rgb_underglow.c |   6 +
+ app/src/rgb_underglow.c                    | 171 ++++++++++++++++++++-
+ 4 files changed, 176 insertions(+), 5 deletions(-)
+
+diff --git a/app/include/dt-bindings/zmk/rgb.h b/app/include/dt-bindings/zmk/rgb.h
+index c1a80082..922be850 100644
+--- a/app/include/dt-bindings/zmk/rgb.h
++++ b/app/include/dt-bindings/zmk/rgb.h
+@@ -19,6 +19,8 @@
+ #define RGB_EFR_CMD 12
+ #define RGB_EFS_CMD 13
+ #define RGB_COLOR_HSB_CMD 14
++/* PATCH local 16/09: chon LED rieng de chinh (param2 = LED index) */
++#define RGB_LED_SEL_CMD 0xFE
+ 
+ #define RGB_TOG RGB_TOG_CMD 0
+ #define RGB_ON RGB_ON_CMD 0
+@@ -33,6 +35,7 @@
+ #define RGB_SPD RGB_SPD_CMD 0
+ #define RGB_EFF RGB_EFF_CMD 0
+ #define RGB_EFR RGB_EFR_CMD 0
++#define RGB_LED_SEL(n) RGB_LED_SEL_CMD n
+ #define RGB_COLOR_HSB_VAL(h, s, v) (((h) << 16) + ((s) << 8) + (v))
+ #define RGB_COLOR_HSB(h, s, v) RGB_COLOR_HSB_CMD##(RGB_COLOR_HSB_VAL(h, s, v))
+ #define RGB_COLOR_HSV RGB_COLOR_HSB
+\ No newline at end of file
+diff --git a/app/include/zmk/rgb_underglow.h b/app/include/zmk/rgb_underglow.h
+index be0ef252..ddf8bbe2 100644
+--- a/app/include/zmk/rgb_underglow.h
++++ b/app/include/zmk/rgb_underglow.h
+@@ -22,6 +22,7 @@ int zmk_rgb_underglow_select_effect(int effect);
+ struct zmk_led_hsb zmk_rgb_underglow_calc_hue(int direction);
+ struct zmk_led_hsb zmk_rgb_underglow_calc_sat(int direction);
+ struct zmk_led_hsb zmk_rgb_underglow_calc_brt(int direction);
++int zmk_rgb_underglow_select_led(uint8_t idx);
+ int zmk_rgb_underglow_change_hue(int direction);
+ int zmk_rgb_underglow_change_sat(int direction);
+ int zmk_rgb_underglow_change_brt(int direction);
+diff --git a/app/src/behaviors/behavior_rgb_underglow.c b/app/src/behaviors/behavior_rgb_underglow.c
+index 80cd5182..5e992ff7 100644
+--- a/app/src/behaviors/behavior_rgb_underglow.c
++++ b/app/src/behaviors/behavior_rgb_underglow.c
+@@ -234,6 +234,12 @@ static int on_keymap_binding_pressed(struct zmk_behavior_binding *binding,
+         return zmk_rgb_underglow_change_spd(-1);
+     case RGB_EFS_CMD:
+         return zmk_rgb_underglow_select_effect(binding->param2);
++    case RGB_LED_SEL_CMD: {
++        // PATCH v2 (local): chon LED dang chinh (0 = mau nen/layer).
++        // HUI/HUD/SAD/SAI/BRI/BRD/COLOR_HSB sau do chi tac dong LED nay.
++        extern int zmk_rgb_underglow_select_led(uint8_t idx);
++        return zmk_rgb_underglow_select_led((uint8_t)(binding->param2 & 0xFF));
++    }
+     case RGB_EFF_CMD:
+         return zmk_rgb_underglow_cycle_effect(1);
+     case RGB_EFR_CMD:
+diff --git a/app/src/rgb_underglow.c b/app/src/rgb_underglow.c
+index 3453fb44..dba6f61b 100644
+--- a/app/src/rgb_underglow.c
++++ b/app/src/rgb_underglow.c
+@@ -60,6 +60,59 @@ struct rgb_underglow_state {
+     bool on;
+ };
+ 
++// ==== PATCH 16/09 (v2): per-LED color table + selection (local repo) ====
++// Mo hinh: LED0 = mau theo LAYER (listener config/layer_rgb.c set hue vao
++// state.color — LED0 la con duyen duoi, di theo). LED1..N-1 = bang mau
++// RIENG per_led_colors[], luu settings flash (khong mat khi restart).
++//
++// Dieu khien: binding RGB_COLOR_HSB_CMD voi param2 dac biet
++//   RGB_LED_SEL_VAL(n) = (0xFF0000 | n) → chon LED thu n lam "selected"
++//   (n = 0..N-1). Select xong, cac lenh HUI/HUD/SAD/SAI/BRI/BRD/COLOR_HSB
++//   thongdeu chi tac dong len LED selected:
++//     - selected == 0 → chinh state.color (anh huong LED0 = mau layer)
++//     - selected >= 1 → chinh per_led_colors[selected] (LED do rieng)
++//
++// RGB_TOG / ON / OFF / EFF / SPI / SPD van TOAN CUC (tat ca LED cung luc).
++//
++// Frame render (effect solid/breathe):
++//   pixels[0] = state.color (theo layer)
++//   pixels[i>0] = per_led_colors[i].b == 0 → LED TAT han (goi 3 byte 0)
++//                 nguoc lai render mau bang
++#define RGB_PERLED_TABLE_MAX 32
++static struct zmk_led_hsb per_led_colors[RGB_PERLED_TABLE_MAX];
++static uint8_t selected_led = 0;
++
++#define RGB_LED_SEL_CMD 0xFE
++#define RGB_LED_SEL_VAL(n) (0xFF0000U | (n))
++
++static inline bool perled_enabled(void) {
++#if DT_HAS_CHOSEN(zmk_underglow)
++    return DT_PROP(DT_CHOSEN(zmk_underglow), chain_length) > 0;
++#else
++    return false;
++#endif
++}
++
++static inline struct zmk_led_hsb apply_per_led_color(struct zmk_led_hsb base, int led_idx) {
++    if (!perled_enabled() || led_idx == 0) {
++        return base; // LED0 theo mau nen (layer)
++    }
++    if (led_idx < RGB_PERLED_TABLE_MAX) {
++        struct zmk_led_hsb c = per_led_colors[led_idx];
++        if (c.s == 0 && c.b == 0) {
++            return c; // chua config → LED tat (an toan, khong choi)
++        }
++        return c;
++    }
++    return base;
++}
++
++static inline struct zmk_led_hsb apply_per_led_offset(struct zmk_led_hsb hsb, int led_idx) {
++    // Giu ten cu de ko sua callers; nhung v2 khong dung offset nua —
++    // moi LED >=1 doc bang per_led_colors.
++    return hsb;
++}
++
+ static const struct device *led_strip;
+ 
+ static struct led_rgb pixels[STRIP_NUM_PIXELS];
+@@ -132,7 +185,7 @@ static struct led_rgb hsb_to_rgb(struct zmk_led_hsb hsb) {
+ 
+ static void zmk_rgb_underglow_effect_solid(void) {
+     for (int i = 0; i < STRIP_NUM_PIXELS; i++) {
+-        pixels[i] = hsb_to_rgb(hsb_scale_min_max(state.color));
++        pixels[i] = hsb_to_rgb(apply_per_led_color(hsb_scale_min_max(state.color), i));
+     }
+ }
+ 
+@@ -141,7 +194,7 @@ static void zmk_rgb_underglow_effect_breathe(void) {
+         struct zmk_led_hsb hsb = state.color;
+         hsb.b = abs(state.animation_step - 1200) / 12;
+ 
+-        pixels[i] = hsb_to_rgb(hsb_scale_zero_max(hsb));
++        pixels[i] = hsb_to_rgb(apply_per_led_color(hsb_scale_zero_max(hsb), i));
+     }
+ 
+     state.animation_step += state.animation_speed * 10;
+@@ -236,6 +289,39 @@ static int rgb_settings_set(const char *name, size_t len, settings_read_cb read_
+ 
+ SETTINGS_STATIC_HANDLER_DEFINE(rgb_underglow, "rgb/underglow", NULL, rgb_settings_set, NULL, NULL);
+ 
++// ==== PATCH v2: persistence bang mau per-LED ====
++static void per_led_save_work_handler(struct k_work *_work) {
++    settings_save_one("rgb/underglow/perled", per_led_colors, sizeof(per_led_colors));
++}
++static struct k_work_delayable per_led_save_work;
++
++static int per_led_save(void) {
++#if IS_ENABLED(CONFIG_SETTINGS)
++    int ret = k_work_reschedule(&per_led_save_work, K_MSEC(CONFIG_ZMK_SETTINGS_SAVE_DEBOUNCE));
++    return MIN(ret, 0);
++#else
++    return 0;
++#endif
++}
++
++static int rgb_perled_settings_set(const char *name, size_t len, settings_read_cb read_cb,
++                                   void *cb_arg) {
++    const char *next;
++
++    if (settings_name_steq(name, "perled", &next) && !next) {
++        if (len != sizeof(per_led_colors)) {
++            return -EINVAL;
++        }
++
++        int rc = read_cb(cb_arg, per_led_colors, sizeof(per_led_colors));
++        return rc >= 0 ? 0 : rc;
++    }
++
++    return -ENOENT;
++}
++SETTINGS_STATIC_HANDLER_DEFINE(rgb_perled, "rgb/underglow", NULL, rgb_perled_settings_set, NULL,
++                               NULL);
++
+ static void zmk_rgb_underglow_save_state_work(struct k_work *_work) {
+     settings_save_one("rgb/underglow/state", &state, sizeof(state));
+ }
+@@ -267,6 +353,7 @@ static int zmk_rgb_underglow_init(void) {
+ 
+ #if IS_ENABLED(CONFIG_SETTINGS)
+     k_work_init_delayable(&underglow_save_work, zmk_rgb_underglow_save_state_work);
++    k_work_init_delayable(&per_led_save_work, per_led_save_work_handler);
+ #endif
+ 
+ #if IS_ENABLED(CONFIG_ZMK_RGB_UNDERGLOW_AUTO_OFF_USB)
+@@ -374,18 +461,46 @@ int zmk_rgb_underglow_toggle(void) {
+     return state.on ? zmk_rgb_underglow_off() : zmk_rgb_underglow_on();
+ }
+ 
++// PATCH v2: chon LED de chinh rieng (goi tu behavior RGB_LED_SEL_CMD).
++// KHONG luu flash — selection la session tam (restart ve LED0).
++int zmk_rgb_underglow_select_led(uint8_t idx) {
++    if (!led_strip)
++        return -ENODEV;
++    if (idx >= RGB_PERLED_TABLE_MAX || idx >= STRIP_NUM_PIXELS) {
++        return -EINVAL;
++    }
++    selected_led = idx;
++    LOG_INF("Per-LED: selected LED %u", idx);
++    return 0;
++}
++
+ int zmk_rgb_underglow_set_hsb(struct zmk_led_hsb color) {
+     if (color.h > HUE_MAX || color.s > SAT_MAX || color.b > BRT_MAX) {
+         return -ENOTSUP;
+     }
+ 
++    if (selected_led > 0) {
++        per_led_colors[selected_led] = color;
++        return per_led_save();
++    }
++
+     state.color = color;
+ 
+     return 0;
+ }
+ 
++// PATCH v2: calc_* phai lay GOC tu per_led_colors[selected] khi co LED
++// rieng dang chon — behavior convert relative→absolute o CENTRAL dung
++// nhung ham nay lam base; neu doc state.color thi LED duoc chon chi nhan
++// 2 gia tri (base±step) lap lai mai (da te "chi co 2 level" 16/09).
++// Central va peripheral giu bang dong bo: set_hsb GLOBAL chay 2 phia +
++// per_led_save luu flash ca 2 phia → sau reboot van la base dung.
++static inline struct zmk_led_hsb calc_base_color(void) {
++    return selected_led > 0 ? per_led_colors[selected_led] : state.color;
++}
++
+ struct zmk_led_hsb zmk_rgb_underglow_calc_hue(int direction) {
+-    struct zmk_led_hsb color = state.color;
++    struct zmk_led_hsb color = calc_base_color();
+ 
+     color.h += HUE_MAX + (direction * CONFIG_ZMK_RGB_UNDERGLOW_HUE_STEP);
+     color.h %= HUE_MAX;
+@@ -394,7 +509,7 @@ struct zmk_led_hsb zmk_rgb_underglow_calc_hue(int direction) {
+ }
+ 
+ struct zmk_led_hsb zmk_rgb_underglow_calc_sat(int direction) {
+-    struct zmk_led_hsb color = state.color;
++    struct zmk_led_hsb color = calc_base_color();
+ 
+     int s = color.s + (direction * CONFIG_ZMK_RGB_UNDERGLOW_SAT_STEP);
+     if (s < 0) {
+@@ -408,11 +523,21 @@ struct zmk_led_hsb zmk_rgb_underglow_calc_sat(int direction) {
+ }
+ 
+ struct zmk_led_hsb zmk_rgb_underglow_calc_brt(int direction) {
+-    struct zmk_led_hsb color = state.color;
++    struct zmk_led_hsb color = calc_base_color();
+ 
+     int b = color.b + (direction * CONFIG_ZMK_RGB_UNDERGLOW_BRT_STEP);
+     color.b = CLAMP(b, 0, BRT_MAX);
+ 
++    // PATCH v4 (17/09 — fix dung cho "LED toan trang, chinh mau khong an"):
++    // Logic nay PHAI nam trong calc_brt (convert that su chay o central),
++    // KHONG phai change_brt (dead code — behavior convert relative thanh
++    // COLOR_HSB tuyet doi truoc khi invoke, change_brt khong bao gio duoc
++    // goi tu phim). s==0 = TRANG → hue vo hinh; tang sang tu trang thi
++    // ep sat day de mau xuat hien ngay. Muon trang: bam SAD (R) ve 0.
++    if (direction > 0 && color.b > 0 && color.s == 0) {
++        color.s = SAT_MAX;
++    }
++
+     return color;
+ }
+ 
+@@ -420,6 +545,14 @@ int zmk_rgb_underglow_change_hue(int direction) {
+     if (!led_strip)
+         return -ENODEV;
+ 
++    if (selected_led > 0) {
++        struct zmk_led_hsb c = per_led_colors[selected_led];
++        c.h += HUE_MAX + (direction * CONFIG_ZMK_RGB_UNDERGLOW_HUE_STEP);
++        c.h %= HUE_MAX;
++        per_led_colors[selected_led] = c;
++        return per_led_save();
++    }
++
+     state.color = zmk_rgb_underglow_calc_hue(direction);
+ 
+     return zmk_rgb_underglow_save_state();
+@@ -429,6 +562,18 @@ int zmk_rgb_underglow_change_sat(int direction) {
+     if (!led_strip)
+         return -ENODEV;
+ 
++    if (selected_led > 0) {
++        struct zmk_led_hsb c = per_led_colors[selected_led];
++        int s = c.s + (direction * CONFIG_ZMK_RGB_UNDERGLOW_SAT_STEP);
++        c.s = CLAMP(s, 0, SAT_MAX);
++        // s==0 && b==0 la sentinel "chua config" — ep b toi thieu 1
++        if (c.s == 0 && c.b == 0) {
++            c.b = 1;
++        }
++        per_led_colors[selected_led] = c;
++        return per_led_save();
++    }
++
+     state.color = zmk_rgb_underglow_calc_sat(direction);
+ 
+     return zmk_rgb_underglow_save_state();
+@@ -438,6 +583,22 @@ int zmk_rgb_underglow_change_brt(int direction) {
+     if (!led_strip)
+         return -ENODEV;
+ 
++    if (selected_led > 0) {
++        struct zmk_led_hsb c = per_led_colors[selected_led];
++        int b = c.b + (direction * CONFIG_ZMK_RGB_UNDERGLOW_BRT_STEP);
++        c.b = CLAMP(b, 0, BRT_MAX);
++        // PATCH v3 (16/09 — da te "chinh sang OK nhung mau khong an"):
++        // bat LED tu trang thai TAT (s=0,b=0) → mac dinh sat day. Vi s=0
++        // la MAU TRANG → hue vo hinh (doi h khong thay gi). Muon trang:
++        // bam SAD (R) sau khi bat. b=0 (tat) van giu nguyen — chi ap dung
++        // khi DANG BAT LEN tu 0.
++        if (direction > 0 && c.b > 0 && c.s == 0) {
++            c.s = SAT_MAX;
++        }
++        per_led_colors[selected_led] = c;
++        return per_led_save();
++    }
++
+     state.color = zmk_rgb_underglow_calc_brt(direction);
+ 
+     return zmk_rgb_underglow_save_state();
+-- 
+2.45.2.windows.1
+
